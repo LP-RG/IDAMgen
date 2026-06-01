@@ -8,17 +8,17 @@ misclassification patterns across exact, quantized, and approximate stages.
 
 ```bash
 # 1. Train exact (float) model
-python res_net_training.py --model_name lenet5 --conv_type 1
+python3 res_net_training.py --model_name lenet5 --conv_type 1
 
 # 2. Quantize
-python res_net_training.py --model_name lenet5 --conv_type 2 --bit_width 8
+python3 res_net_training.py --model_name lenet5 --conv_type 2 --bit_width 8
 
 # 3. Approximate retrain
-python res_net_training.py --model_name lenet5 --conv_type 3 \
+python3 res_net_training.py --model_name lenet5 --conv_type 3 \
     --input_path multipliers/my_table.npy --bit_width 8
 
 # 4. Visualise with t-SNE
-python res_net_training.py --model_name lenet5 --tsne
+python3 res_net_training.py --model_name lenet5 --tsne
 ```
 
 ## Supported Models

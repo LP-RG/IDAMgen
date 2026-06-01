@@ -132,7 +132,7 @@ Automatically generated on every run. Logs hyper-parameters (seed, max_train, et
 ### A — Quick sanity check (raw pixels, all classes)
 
 ```bash
-python res_net_training.py \
+python3 res_net_training.py \
     --model_name lenet5 \
     --tsne \
     --tsne_feature_space pixels \
@@ -142,7 +142,7 @@ python res_net_training.py \
 ### B — Layer embedding, compare exact vs. quantized
 
 ```bash
-python res_net_training.py \
+python3 res_net_training.py \
     --model_name resnet \
     --tsne \
     --tsne_stages exact quantized \
@@ -152,7 +152,7 @@ python res_net_training.py \
 ### C — Multi-layer comparison
 
 ```bash
-python res_net_training.py \
+python3 res_net_training.py \
     --model_name lenet5 \
     --tsne \
     --tsne_stages exact \
@@ -162,7 +162,7 @@ python res_net_training.py \
 ### D — Approximate hardware, specific classes, with image grid
 
 ```bash
-python res_net_training.py \
+python3 res_net_training.py \
     --model_name resnet \
     --tsne \
     --tsne_stages approximate \
