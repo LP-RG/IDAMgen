@@ -8,22 +8,24 @@ import csv
 from threading import Lock
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
-CURR_DIR = os.path.dirname(os.path.abspath(__file__))
-CNN_AT_DIR = os.path.dirname(os.path.dirname(CURR_DIR))  # CNN_AT/
-SUBXPAT_DIR = os.path.join(CNN_AT_DIR, "subxpat")        # CNN_AT/subxpat/
 
+CURR_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(os.path.dirname(CURR_DIR))
+SUBXPAT_DIR = os.path.join(ROOT_DIR, "subxpat")        # CNN_AT/subxpat/
+os.environ['PYTHONPATH'] = ROOT_DIR
 if SUBXPAT_DIR not in sys.path:
-    sys.path.insert(0, SUBXPAT_DIR)
+    sys.path.insert(0, ROOT_DIR)
 
 try:
     from subxpat.sxpat.specifications import Specifications
 except ImportError as e:
+    print(ROOT_DIR)
     print(f"Error importing sxpat specifications: {e}")
     raise
 # --- Script and output paths ---
 SCRIPT_ANALYZER = os.path.join(CURR_DIR, "npy_generator.py")
-ANALYZER_OUTPUT_DIR = os.path.join(CURR_DIR, "npy_outputs")
-SCRIPT_TRAINING = os.path.join(CURR_DIR, "res_net_training.py")
+ANALYZER_OUTPUT_DIR = os.path.join(CURR_DIR, "experiments/npy_outputs")
+SCRIPT_TRAINING = os.path.join(ROOT_DIR, "src/cnn_training.py")
 
 # --- CSV settings ---
 CSV_FILE = "results.csv"
@@ -32,7 +34,7 @@ csv_lock = Lock()
 
 def get_log_paths(exp_name: str) -> dict:
     """Creates and returns paths for the log files of a given experiment."""
-    log_dir = os.path.join(CURR_DIR, "log", exp_name)
+    log_dir = os.path.join(CURR_DIR, "experiments/log", exp_name)
     os.makedirs(log_dir, exist_ok=True)
     return {
         "subxpat":  os.path.join(log_dir, "subxpat.log"),
@@ -123,11 +125,15 @@ def run_training(npy_path: str, conv_type: str, model_name: str, exact_acc_val, 
     Skips training if a valid accuracy result already exists in the CSV.
     Returns the path to the input .npy file.
     """
+    
     filename_key = os.path.splitext(os.path.basename(npy_path))[0]
 
     if check_accuracy_in_csv(npy_path):
         print(f"Skipping training for '{filename_key}': accuracy already recorded.")
         return npy_path
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.join(ROOT_DIR,"src") + ":" + env.get("PYTHONPATH", "")
 
     cmd = [
         sys.executable, SCRIPT_TRAINING,
@@ -136,10 +142,13 @@ def run_training(npy_path: str, conv_type: str, model_name: str, exact_acc_val, 
         "--input_path", npy_path,
         "--bit_width", str(bitwidth),
     ]
+
     if exact_acc_val is not None:
         cmd.extend(["--exact_accuracy", str(exact_acc_val)])
-
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
+    except subprocess.CalledProcessError as e:
+        print(e.stderr)
 
     with open(log_path, "a") as lfile:
         lfile.write(f"\n--- TRAINING: {filename_key} ---\n")
@@ -172,7 +181,7 @@ def orchestrator(args, subxpat_argv: list):
     logs = get_log_paths(exp_name)
     print(f"--- Orchestrator started: '{exp_name}' ---")
 
-    exp_subxpat_dir = os.path.join(CURR_DIR, exp_name)
+    exp_subxpat_dir = os.path.join(CURR_DIR,"experiments" ,exp_name)
     copy_project_to_exp(SUBXPAT_DIR, exp_subxpat_dir)
 
     venv_activate = os.path.join(exp_subxpat_dir, ".venv", "bin", "activate")
@@ -249,7 +258,6 @@ if __name__ == "__main__":
     parser.add_argument("--exact-accuracy",   type=int, default=None, help="Known exact model accuracy (optional).")
     parser.add_argument("--experiment-name",  required=True,  help="Unique name for this experiment run.")
     args, subxpat_argv = parser.parse_known_args()
-
     # Parse SubXPAT specifications from the remaining argv for validation and benchmark extraction
     original_argv = sys.argv[:]
     sys.argv = [sys.argv[0]] + subxpat_argv

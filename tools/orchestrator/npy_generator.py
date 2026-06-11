@@ -4,16 +4,17 @@ import argparse
 import csv
 from vpadanalyzer.synthesis import Synthesis
 
+
 CSV_HEADER = "file,area,power,delay,pda,mean_ae,mean_ae_cnn,max_ae,accuracy\n"
 CSV_FILE = "results.csv"
 
 try:
-    import sub_xpat_circuits_generator
-    import sub_x_pat_simulator
+    import tools.synthesis_npy_generation.sub_xpat_circuits_generator as sub_xpat_circuits_generator
+    import tools.synthesis_npy_generation.sub_x_pat_simulator as sub_x_pat_simulator
 except ImportError:
     sys.path.append(os.getcwd())
-    import sub_xpat_circuits_generator
-    import sub_x_pat_simulator
+    import tools.synthesis_npy_generation.sub_xpat_circuits_generator as sub_xpat_circuits_generator
+    import tools.synthesis_npy_generation.sub_x_pat_simulator as sub_x_pat_simulator
 
 def find_matching_stats(current_stats):
     if not os.path.exists(CSV_FILE):

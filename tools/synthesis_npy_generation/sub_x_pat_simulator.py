@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import sys
 import importlib
 import os
-heat_maps_path = "heat_maps/npy_matrix/8_resnet_20"
+heat_maps_path = "heat_maps/npy_matrix/8bit_resnet_20"
 def get_prob_matrix():
     heat_map_files = sorted([f for f in os.listdir(heat_maps_path) if f.endswith(".npy")])
     cumulative_heatmap = None
@@ -25,7 +25,7 @@ def multiplier_test(bit_width, filename,sub_x_pat_multiplier):
     np.save(filename,scrumbled_res)
 
 
-def get_mult_caracteristics(bit_width, filename,sub_x_pat_multiplier):
+def get_mult_caracteristics(bit_width,sub_x_pat_multiplier):
     max_error = 0
     mean_ae = 0
     mean_ae_cnn = 0
@@ -44,11 +44,14 @@ def get_mult_caracteristics(bit_width, filename,sub_x_pat_multiplier):
             if(diff > max_error):
                 max_error = diff
     return (mean_ae / ((2**bit_width)*(2**bit_width))), mean_ae_cnn, max_error
+
 def execute_save(bit_width, filename):
     if 'sub_x_pat_multiplier' in sys.modules:
         sub_x_pat_multiplier = importlib.reload(sys.modules['sub_x_pat_multiplier'])
-    else:
+    try:
         import sub_x_pat_multiplier
-    mean_ae, mean_ae_cn, max_error = get_mult_caracteristics(bit_width,filename,sub_x_pat_multiplier)
+    except:
+        import tools.synthesis_npy_generation.sub_x_pat_multiplier as sub_x_pat_multiplier
+    mean_ae, mean_ae_cn, max_error = get_mult_caracteristics(bit_width,sub_x_pat_multiplier)
     multiplier_test(bit_width,filename,sub_x_pat_multiplier)
     return mean_ae, mean_ae_cn,max_error

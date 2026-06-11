@@ -1,15 +1,26 @@
 from vpadanalyzer.synthesis import Synthesis
 import os
 import sys
-import sub_xpat_circuits_generator
-import multiplier_outputs_plotting
-import sub_x_pat_simulator
+import sub_xpat_circuits_generator 
+import multiplier_outputs_plotting 
+import sub_x_pat_simulator 
 import csv
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 GENERATED_FILE = os.path.join(SCRIPT_DIR, "sub_x_pat_multiplier.py")
 CSV_FILENAME = "circuits_area_power.csv"
 CSV_FIELDS = ["file", "area", "power", "delay", "pda", "mean_ae", "mean_ae_cnn", "max_ae"]
+
+PATH_TO_LOCAL_OPEN_STA = "PLACEHOLDER"
+
+
+def patch_opensta_path(path: str):
+    import vpadanalyzer.paths
+    vpadanalyzer.paths.OPENSTA = path
+    import vpadanalyzer.synthesis
+    vpadanalyzer.synthesis.OPENSTA = path
+    
+
 
 
 def circuits_analizer(input_path):
@@ -30,9 +41,9 @@ def create_matrices(multipliers_folder, bitwidth, output_plot_path):
     os.makedirs(output_plot_path, exist_ok=True)
     results = []
     for filename in sorted(os.listdir(output_plot_path)):
-        if not filename.endswith(".npy"):
+        if not filename.endswith(".v"):
             continue
-        npy_path = os.path.join(output_plot_path, filename)
+        npy_path = os.path.join(output_plot_path, filename.split(".")[0])
         name = filename.split(".")[0]
         input_path = os.path.join(multipliers_folder, name + ".v")
         if not os.path.isfile(input_path):
@@ -43,7 +54,7 @@ def create_matrices(multipliers_folder, bitwidth, output_plot_path):
             sub_xpat_circuits_generator.generate_approx_mult_function(input_path, bitwidth)
             mean_ae, mean_ae_cnn, max_error = sub_x_pat_simulator.execute_save(bitwidth, npy_path)
             results.append({"file": name + ".v", "mean_ae": mean_ae, "mean_ae_cnn": mean_ae_cnn, "max_ae": max_error})
-            multiplier_outputs_plotting.plots(name, npy_path, output_plot_path)
+            multiplier_outputs_plotting.plots(name, npy_path + ".npy", output_plot_path)
         except Exception as e:
             print(f"Skipping {filename}: {e}")
     return results
@@ -93,6 +104,8 @@ def write_csv(merged_results, output_path):
 if __name__ == "__main__":
     if len(sys.argv) != 4:
         raise NotImplementedError("Usage: script.py <multipliers_folder> <bitwidth> <output_path>")
+    
+    patch_opensta_path(PATH_TO_LOCAL_OPEN_STA)
 
     multipliers_folder, bitwidth, output_path = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 
