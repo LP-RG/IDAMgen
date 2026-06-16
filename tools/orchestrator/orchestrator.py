@@ -13,13 +13,13 @@ CURR_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(CURR_DIR))
 SUBXPAT_DIR = os.path.join(ROOT_DIR, "subxpat")        # CNN_AT/subxpat/
 os.environ['PYTHONPATH'] = ROOT_DIR
+
 if SUBXPAT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 try:
     from subxpat.sxpat.specifications import Specifications
 except ImportError as e:
-    print(ROOT_DIR)
     print(f"Error importing sxpat specifications: {e}")
     raise
 # --- Script and output paths ---
@@ -264,5 +264,6 @@ if __name__ == "__main__":
     specs = Specifications.parse_args()
     sys.argv = original_argv
     vars(args).update(vars(specs))
-
+    print(CURR_DIR)
+    print(ROOT_DIR)
     orchestrator(args, subxpat_argv)
