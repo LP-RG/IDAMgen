@@ -11,14 +11,16 @@ GENERATED_FILE = os.path.join(SCRIPT_DIR, "sub_x_pat_multiplier.py")
 CSV_FILENAME = "circuits_area_power.csv"
 CSV_FIELDS = ["file", "area", "power", "delay", "pda", "mean_ae", "mean_ae_cnn", "max_ae"]
 
-PATH_TO_LOCAL_OPEN_STA = "PLACEHOLDER"
+PATH_TO_LOCAL_OPEN_STA = 'PLACEHOLDER'
 
 
 def patch_opensta_path(path: str):
-    import vpadanalyzer.paths
-    vpadanalyzer.paths.OPENSTA = path
-    import vpadanalyzer.synthesis
-    vpadanalyzer.synthesis.OPENSTA = path
+    if(os.path.isfile(path)):
+        import vpadanalyzer.paths
+        vpadanalyzer.paths.OPENSTA = path   
+        import vpadanalyzer.synthesis
+        vpadanalyzer.synthesis.OPENSTA = path
+    
     
 
 
