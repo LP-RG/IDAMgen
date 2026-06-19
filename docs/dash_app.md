@@ -1,4 +1,4 @@
-# Interactive Dash App (`apps/tsne_dash_app.py`)
+# Interactive Dash App (`tools/tsne_visualization/web_visualization/tsne_dash_app.py`)
 
 > **Status:** Work in progress — this section will be expanded as the app develops.
 
@@ -9,8 +9,10 @@ produced by the t-SNE tool (see [t-SNE Visualization](tsne.md)).
 
 ## Launching
 
+Run from the repo root:
+
 ```bash
-python3 apps/tsne_dash_app.py [--host 0.0.0.0] [--port 8050] [--debug]
+python3 tools/tsne_visualization/web_visualization/tsne_dash_app.py [--host 0.0.0.0] [--port 8050] [--debug]
 ```
 
 Then open `http://localhost:8050` in your browser.
@@ -25,8 +27,9 @@ Then open `http://localhost:8050` in your browser.
 
 ## Usage
 
-1. Paste the path to a run directory (e.g., `plots/layer/resnet/run_2026...`)
-   into the input field at the top. (You may also paste a single `.npz` file for backward compatibility).
+1. Paste the path to a run directory (e.g., `tools/tsne_visualization/plots/layer/resnet/run_2026...`)
+   into the input field at the top — relative paths are resolved against the
+   repo root. (You may also paste a single `.npz` file for backward compatibility).
 2. Click **"Load Run"**. The app will automatically discover all artifacts in that run and populate the dropdown menus.
 3. **Compare Artifacts:** Use the dropdowns above the **Left View** and **Right View** to instantly display and compare different stages (e.g. `exact` vs `approximate`).
 4. **Inspect Errors:** Click a red × (misclassified point) on either plot to see the raw image and metadata in the **Misclassified Preview** panel at the bottom.

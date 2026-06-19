@@ -6,16 +6,16 @@ produces both static PNG outputs and an interactive Dash web application.
 
 ---
 
-## 1 — CLI Usage (`res_net_training.py`)
+## 1 — CLI Usage (`tools/tsne_visualization/tsne_runner.py`)
 
-The t-SNE analysis is triggered by passing `--tsne` alongside the usual model arguments.
+The t-SNE tool is a standalone entry point (it is **not** a flag on
+`src/cnn_training.py`).
 
 ### Minimal example
 
 ```bash
-python res_net_training.py \
-    --model_name lenet5 \
-    --tsne
+python3 tools/tsne_visualization/tsne_runner.py \
+    --model_name lenet5
 ```
 
 This runs t-SNE on the **exact** (float) checkpoint with all defaults (see table below).
@@ -24,7 +24,6 @@ This runs t-SNE on the **exact** (float) checkpoint with all defaults (see table
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--tsne` | flag | — | **Required** to activate t-SNE mode. |
 | `--model_name` | str | `resnet` | Model key: `lenet5`, `resnet` (=resnet20), `resnet8`, `vgg16`, `alexnet_cifar10`, `resnet56`. |
 | `--tsne_perplexity` | int | `30` | t-SNE perplexity. Lower values focus on local structure. |
 | `--tsne_max_iter` | int | `1000` | Maximum t-SNE iterations. |
@@ -40,13 +39,13 @@ This runs t-SNE on the **exact** (float) checkpoint with all defaults (see table
 | `--show_misclassifications` | flag | `False` | Also save a grid of misclassified test images as a PNG. |
 | `--tsne-no-save-static` | flag | — | Suppress static PNG output. |
 | `--tsne-no-save-dash-artifact` | flag | — | Suppress `.npz` Dash artifact output. |
+| `--train-if-missing` | flag | `False` | Automatically train missing checkpoints before running t-SNE. |
 
 ### Multi-stage comparison example
 
 ```bash
-python res_net_training.py \
+python3 tools/tsne_visualization/tsne_runner.py \
     --model_name resnet \
-    --tsne \
     --tsne_stages exact quantized approximate \
     --tsne_multiplier_path multipliers/my_table.npy multipliers/my_other_table.npy \
     --tsne_feature_layer penultimate \
@@ -89,10 +88,13 @@ You can pass one or more of these aliases separated by spaces. All requested lay
 
 ## 3 — Output Files
 
-All outputs are written under `./plots` (configurable via `save_dir` in the Python API). Each run is logically grouped into a timestamped directory containing a `metadata.json` file.
+All outputs are written under `tools/tsne_visualization/plots/` — i.e. relative
+to the `tsne_runner.py` script's own directory, **not** the repo root
+(configurable via `save_dir` in the Python API). Each run is logically grouped
+into a timestamped directory containing a `metadata.json` file.
 
 ```
-plots/
+tools/tsne_visualization/plots/
 └── <feature_space>/          # "layer" or "pixels"
     └── <model_name>/
         └── run_YYYYMMDD_HHMMSS/
@@ -132,9 +134,8 @@ Automatically generated on every run. Logs hyper-parameters (seed, max_train, et
 ### A — Quick sanity check (raw pixels, all classes)
 
 ```bash
-python3 res_net_training.py \
+python3 tools/tsne_visualization/tsne_runner.py \
     --model_name lenet5 \
-    --tsne \
     --tsne_feature_space pixels \
     --tsne_max_train 1000 --tsne_max_test 500
 ```
@@ -142,9 +143,8 @@ python3 res_net_training.py \
 ### B — Layer embedding, compare exact vs. quantized
 
 ```bash
-python3 res_net_training.py \
+python3 tools/tsne_visualization/tsne_runner.py \
     --model_name resnet \
-    --tsne \
     --tsne_stages exact quantized \
     --tsne_feature_layer penultimate
 ```
@@ -152,9 +152,8 @@ python3 res_net_training.py \
 ### C — Multi-layer comparison
 
 ```bash
-python3 res_net_training.py \
+python3 tools/tsne_visualization/tsne_runner.py \
     --model_name lenet5 \
-    --tsne \
     --tsne_stages exact \
     --tsne_feature_layer conv1 penultimate
 ```
@@ -162,9 +161,8 @@ python3 res_net_training.py \
 ### D — Approximate hardware, specific classes, with image grid
 
 ```bash
-python3 res_net_training.py \
+python3 tools/tsne_visualization/tsne_runner.py \
     --model_name resnet \
-    --tsne \
     --tsne_stages approximate \
     --tsne_multiplier_path multipliers/my_table.npy \
     --tsne_classes 3 5 8 \
@@ -175,6 +173,8 @@ python3 res_net_training.py \
 ### E — View an existing run in the Dash app
 
 ```bash
-python3 apps/tsne_dash_app.py
-# In the browser: paste a run directory path, e.g. plots/layer/resnet/run_20260515_181919
+python3 tools/tsne_visualization/web_visualization/tsne_dash_app.py
+# In the browser: paste a run directory path. Relative paths are resolved
+# against the repo root, so use e.g.:
+#   tools/tsne_visualization/plots/layer/resnet/run_20260515_181919
 ```
