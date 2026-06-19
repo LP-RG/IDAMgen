@@ -1,6 +1,6 @@
 # Training Workflow
 
-All training is driven by `res_net_training.py`.
+All training is driven by `src/cnn_training.py`.
 Stages are selected via `--conv_type` and must be run **in order** — each
 stage depends on the checkpoint produced by the previous one.
 
@@ -57,6 +57,7 @@ All checkpoints are saved under `trained_models/`.
 | `--input_path` | str | `None` | Path to a `.npy` multiplier table, or a directory of `.npy` files (batch mode). |
 | `--exact_accuracy` | float | `0` | Exact baseline accuracy; retrain aborts if drop exceeds 3 pp. |
 | `--no_retraining` | flag | `False` | Skip retrain loop for conv_type 3; saves `_noretrain.pth` and exits. |
+| `--seed` | int | `42` | RNG seed for training. |
 
 ---
 
@@ -65,19 +66,19 @@ All checkpoints are saved under `trained_models/`.
 ### Train and test exact model
 
 ```bash
-python res_net_training.py --model_name lenet5 --conv_type 1
+python3 src/cnn_training.py --model_name lenet5 --conv_type 1
 ```
 
 ### Quantize
 
 ```bash
-python res_net_training.py --model_name lenet5 --conv_type 2 --bit_width 8
+python3 src/cnn_training.py --model_name lenet5 --conv_type 2 --bit_width 8
 ```
 
 ### Approximate retrain with a single multiplier table
 
 ```bash
-python res_net_training.py \
+python3 src/cnn_training.py \
     --model_name lenet5 \
     --conv_type 3 \
     --input_path multipliers/my_table.npy \
@@ -88,7 +89,7 @@ python res_net_training.py \
 ### Batch mode — evaluate a whole folder of tables
 
 ```bash
-python res_net_training.py \
+python3 src/cnn_training.py \
     --model_name resnet \
     --conv_type 3 \
     --input_path multipliers/ \
