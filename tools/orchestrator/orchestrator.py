@@ -86,6 +86,14 @@ def update_accuracy_in_csv(npy_path: str, accuracy: float):
 
 def copy_project_to_exp(source: str, destination: str):
     """Copies the SubXPAT project to a fresh experiment directory, excluding git and cache files."""
+
+    src_absolute = os.path.abspath(source)
+    dest_absolute = os.path.abspath(destination)
+
+    if os.path.commonpath([src_absolute]) == os.path.commonpath([src_absolute, dest_absolute]):
+        raise RuntimeError("Destination cannot be a subdirectory of the source. (To prevent recursive copying)")
+
+
     if os.path.exists(destination):
         shutil.rmtree(destination)
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".git", "__pycache__"))
@@ -107,7 +115,7 @@ def run_analyzer(file_path: str, bitwidth: int, output_dir: str, exp_name: str, 
     """
     filename = os.path.basename(file_path)
     output_npy_name = os.path.splitext(filename)[0] + f"_{exp_name}.npy"
-    output_npy_path = os.path.join(output_dir, output_npy_name)
+    output_npy_path = os.path.join(output_dir, exp_name, output_npy_name)
     cmd = [
         sys.executable, SCRIPT_ANALYZER,
         file_path, str(bitwidth), output_npy_path,
@@ -119,7 +127,7 @@ def run_analyzer(file_path: str, bitwidth: int, output_dir: str, exp_name: str, 
     return output_npy_path
 
 
-def run_training(npy_path: str, conv_type: str, model_name: str, exact_acc_val, bitwidth: int, log_path: str) -> str:
+def run_training(npy_path: str, conv_type: str, model_name: str, exact_acc_val, bitwidth: int, log_path: str, *extra_args) -> str:
     """
     Runs the CNN training script on a given .npy file.
     Skips training if a valid accuracy result already exists in the CSV.
@@ -145,6 +153,18 @@ def run_training(npy_path: str, conv_type: str, model_name: str, exact_acc_val, 
 
     if exact_acc_val is not None:
         cmd.extend(["--exact_accuracy", str(exact_acc_val)])
+
+    if extra_args:
+        try:
+            if len(extra_args) >= 1 and extra_args[0] == "--multiple_layers":
+                cmd.append("--multiple_layers")
+                if len(extra_args) >= 2 and extra_args[1] is not None:
+                    cmd.extend(["--layer_mode", str(extra_args[1])])
+        except Exception:
+            pass
+
+    print(f"Running training for {filename_key} with command: {' '.join(cmd)}")
+
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
     except subprocess.CalledProcessError as e:
@@ -210,6 +230,7 @@ def orchestrator(args, subxpat_argv: list):
 
     processed_files = set()
     training_futures = []
+    os.makedirs(os.path.join(ANALYZER_OUTPUT_DIR, exp_name), exist_ok=True)
 
     with ProcessPoolExecutor() as analyzer_executor, ThreadPoolExecutor(max_workers=2) as training_executor:
         while proc_gen.poll() is None or training_futures:
@@ -236,10 +257,15 @@ def orchestrator(args, subxpat_argv: list):
                         """Callback: submits training once analysis is complete."""
                         try:
                             npy_path = f_ana.result()
-                            t_fut = training_executor.submit(
-                                run_training, npy_path, args.conv_type, args.model_name,
-                                args.exact_accuracy, bitwidth, logs["training"]
-                            )
+                            if not args.multiple_layers:
+                                t_fut = training_executor.submit(
+                                    run_training, npy_path, args.conv_type, args.model_name,
+                                    args.exact_accuracy, bitwidth, logs["training"]
+                                )
+                            else:
+                                t_fut = training_executor.submit(
+                                    run_training, npy_path, args.conv_type, args.model_name,
+                                    args.exact_accuracy, bitwidth, logs['training'], "--multiple_layers", args.layer_mode)
                             training_futures.append(t_fut)
                         except Exception as e:
                             print(f"Error scheduling training: {e}")
@@ -257,6 +283,9 @@ if __name__ == "__main__":
     parser.add_argument("--model-name",       default="resnet", help="CNN model name.")
     parser.add_argument("--exact-accuracy",   type=int, default=None, help="Known exact model accuracy (optional).")
     parser.add_argument("--experiment-name",  required=True,  help="Unique name for this experiment run.")
+    parser.add_argument("--multiple_layers", action="store_true")
+    parser.add_argument("--layer_mode", choices=["1", "2"])
+    
     args, subxpat_argv = parser.parse_known_args()
     # Parse SubXPAT specifications from the remaining argv for validation and benchmark extraction
     original_argv = sys.argv[:]
