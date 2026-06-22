@@ -24,7 +24,7 @@ soon as it appears — it does not wait for the whole batch to finish.
 
 | Requirement | Why |
 |---|---|
-| [SubXPAT](https://github.com/) checked out at `<repo_root>/subxpat/`, with its own `Makefile` exposing a `setup` target | provides `main.py` and `sxpat.specifications.Specifications`, imported directly by `orchestrator.py` |
+| [SubXPAT](https://github.com/LP-RG/subxpat/tree/114-new-zone-constraint-with-re-metric) SubXPAT checked out at `<repo_root>/subxpat/` on branch `114-new-zone-constraint-with-re-metric`, with its own Makefile exposing a setup target | provides `main.py` and `sxpat.specifications.Specifications`, imported directly by `orchestrator.py` |
 | Yosys + OpenSTA on `PATH` (or configured via `PATH_TO_LOCAL_OPEN_STA` in `tools/synthesis_npy_generation/circuits_analizer.py`) | used by `vpadanalyzer` (the `verilog-pad-analyzer` package) for area/power/delay synthesis |
 | `syn_lib/nangate_45nm_typ.lib` | standard-cell library consumed by the OpenSTA backend |
 | `heat_maps/npy_matrix/8bit_resnet_20/*.npy` | per-layer input co-occurrence histograms (see below); needed for the CNN-weighted error metric |
