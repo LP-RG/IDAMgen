@@ -1,4 +1,3 @@
-# IDAMgen
 # Multi-Constrained Input-Distribution-Aware Approximate Multiplier Generation for CNNs
 A research framework for training, quantizing, and evaluating CNN models on
 approximate-hardware multipliers, with built-in t-SNE visualization of
