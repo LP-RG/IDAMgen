@@ -17,7 +17,7 @@ py_dep: py_init
 	$(IN_ENV) python3 -m pip install --upgrade pip setuptools wheel
 	$(IN_ENV) pip install --upgrade -r requirements.txt
 	$(IN_ENV) pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
-	$(IN_ENV) pip install --no-build-isolation ./extension_cpp/.
+	$(IN_ENV) pip install --no-build-isolation ./src/extension_cpp/.
 
 setup: py_init py_dep 
 

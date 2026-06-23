@@ -1,3 +1,9 @@
 matplotlib==3.7.5
 numpy==1.24.4
 verilog-pad-analyzer @ git+https://github.com/altassara/VerilogPADAnalyzer.git@power-self-distr
+
+# Used by tools/tsne_visualization/ (t-SNE embedding, plotting, Dash app)
+scikit-learn==1.3.2
+seaborn==0.13.2
+dash==2.18.2
+pillow==10.4.0
