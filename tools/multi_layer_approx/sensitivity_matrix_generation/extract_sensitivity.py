@@ -44,14 +44,14 @@ def evaluate_forward_only(model, inputs, targets, criterion):
     return loss.item()
 
 def get_sensitivity_batch(batch_size, model_name="resnet8"):
-    """Load a single batch from the training dataset to use as Sensitivity Set."""
+    """Load a single batch from the training dataset to use as Sensitivity Set"""
 
     print(f"Extracting Sensitivity Set (Batch size: {batch_size})...")
     train_loader, _, _ = data_loader.get_datasets(batch_size, model_name)
     inputs, targets = next(iter(train_loader))
     return inputs, targets
 
-def calibration(model, stats=False):
+def calibration(model, stats=False, calib_inputs=None):
     """Do a single forward pass for calibration."""
 
     print("Calibrating model for activation scales...")
@@ -59,21 +59,21 @@ def calibration(model, stats=False):
         model.eval()
     else:
         model.train()
-        
-    train_loader, _, _ = data_loader.get_datasets(64, "resnet8")
-    
-    for inputs, _ in train_loader:
-        inputs = inputs.to(device)
-        model(inputs)
-        break
+     
+    calib_inputs = calib_inputs.to(device)
+    model(calib_inputs)
 
 def main():
     parser = argparse.ArgumentParser(description="Extract sensitivity matrix for ResNet8 using forward pass.")
     
-    parser.add_argument("--l1_approx", type=str, default=None, help="Path to folder with .npy files for Layer 1")
-    parser.add_argument("--l2_approx", type=str, default=None, help="Path to folder with .npy files for Layer 2")
-    parser.add_argument("--l3_approx", type=str, default=None, help="Path to folder with .npy files for Layer 3")
-    parser.add_argument("--l4_approx", type=str, default=None, help="Path to folder with .npy files for Layer 4")
+    parser.add_argument("--1_1_approx", type=str, default=None, help="Path to folder with .npy files for Layer 1")
+    parser.add_argument("--1_2_approx", type=str, default=None, help="Path to folder with .npy files for Layer 2")
+    parser.add_argument("--2_1_approx", type=str, default=None, help="Path to folder with .npy files for Layer 3")
+    parser.add_argument("--2_2_approx", type=str, default=None, help="Path to folder with .npy files for Layer 4")
+    parser.add_argument("--2_s_approx", type=str, default=None, help="Path to folder with .npy files for Layer 5")
+    parser.add_argument("--3_1_approx", type=str, default=None, help="Path to folder with .npy files for Layer 6")
+    parser.add_argument("--3_2_approx", type=str, default=None, help="Path to folder with .npy files for Layer 7")
+
     
     parser.add_argument("--batch_size", type=int, default=1024, help="Size of the Sensitivity Set (fixed images)")
     parser.add_argument("--quant_model_path", type=str, default=os.path.join(ROOT_DIR, "trained_models/resnet8_q8.pth"), help="Path to the quantized model")
@@ -82,7 +82,17 @@ def main():
     if not os.path.exists(args.quant_model_path):
         raise FileNotFoundError(f"Quantized model not found in {args.quant_model_path}. Please run the quantized training first.")
 
-    layer_dirs = [args.l1_approx, args.l2_approx, args.l3_approx]
+    args_dict = vars(args)
+    layer_dirs = [
+        args_dict['1_1_approx'], 
+        args_dict['1_2_approx'], 
+        args_dict['2_1_approx'], 
+        args_dict['2_2_approx'], 
+        args_dict['2_s_approx'], 
+        args_dict['3_1_approx'], 
+        args_dict['3_2_approx']
+    ]
+    
     layer_candidates = [] 
     global_index_map = []
     
@@ -129,9 +139,9 @@ def main():
             signed=False, 
             zone=False
         ).to(device)
-        model.load_state_dict(quant_state_dict, strict=False)
+        model.load_state_dict(quant_state_dict)
 
-        calibration(model)
+        calibration(model, calib_inputs=inputs)
 
         return evaluate_forward_only(model, inputs, targets, criterion)
 

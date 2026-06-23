@@ -4,19 +4,68 @@ import json
 import os
 import argparse
 import re
+import seaborn as sns
 
-def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_path=None):
+def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_path=None, total_loss=False):
     """
-    Load and visualize sensitivity matrix.
+    Load and visualize sensitivity matrix using Seaborn with sorted MAE.
     """
     if not os.path.exists(npy_path) or not os.path.exists(json_path):
         print(f"Errore: File {npy_path} o {json_path} non trovati.")
         return
 
     matrix = np.load(npy_path)
+
+    # --- TRASFORMAZIONE IN LOSS TOTALE (CLADO DEFAULT) ---
+    if total_loss:
+        print("Conversione da interazione pura a loss totale (CLADO default)...")
+        diag = np.diag(matrix) # Estrae le loss individuali (L_i e L_j)
+
+        # Applica vettorialmente: L_ij = 2 * S_ij + L_i + L_j
+        total_loss_matrix = 2.0 * matrix + (diag[:, None] + diag[None, :])
+
+        dim = total_loss_matrix.shape[0]
+        passo = 3 # Numero di candidati/configurazioni per layer (es. 8, 7, 6 bits)
+
+        for i in range(0, dim, passo):
+            total_loss_matrix[i:i+passo, i:i+passo] = 0
+
+        # Ripristina la diagonale (le loss individuali rimangono invariate)
+        np.fill_diagonal(total_loss_matrix, diag)
+
+        # Sostituisce la matrice con quella della loss totale
+        matrix = total_loss_matrix
+    # -----------------------------------------------------
+
+    # PSD transformation as in CLADO
+    # es, us = np.linalg.eig(matrix)
+    # es[es < 0] = 0
+    # matrix = us @ np.diag(es) @ us.T
+    # matrix = (matrix + matrix.T) / 2
     
     with open(json_path, 'r') as f:
         index_map = json.load(f)
+
+    sorting_info = []
+    for i, item in enumerate(index_map):
+        layer = item.get('layer', 0)
+        file_name = item.get('file', '')
+        
+        match = re.search(r"mae_cnn_(\d+)", file_name)
+
+        mae_val = int(match.group(1)) if match else float('inf') 
+        
+        sorting_info.append((i, layer, mae_val))
+
+    sorting_info.sort(key=lambda x: (x[1], -x[2]))
+    
+    new_order = [x[0] for x in sorting_info]
+
+    index_map = [index_map[i] for i in new_order]
+    
+
+    matrix = matrix[new_order, :] # reorder rows
+    matrix = matrix[:, new_order] # reorder columns
 
     labels = []
     for item in index_map:
@@ -30,40 +79,49 @@ def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_pat
 
     max_abs_val = np.max(np.abs(matrix))
 
-    cax = ax.imshow(matrix, cmap="plasma", vmin=-max_abs_val, vmax=max_abs_val)
+    sns.heatmap(
+        matrix, 
+        xticklabels=labels, 
+        yticklabels=labels, 
+        cmap='RdBu_r',       
+        vmin=-max_abs_val, 
+        vmax=max_abs_val,
+        center=0,
+        annot=True,          
+        fmt=".3f",           
+        annot_kws={"size": 6},
+        cbar_kws={'label': 'Delta Loss (with respect to quantized)'},
+        ax=ax
+    )
 
-    cbar = fig.colorbar(cax, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label('Delta Loss (whith respect to quantized)', rotation=270, labelpad=20)
-
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            val = matrix[i, j]
-            text_color = "white" if abs(val) > (max_abs_val * 0.6) else "black"
-            ax.text(j, i, f"{val:.3f}", ha="center", va="center", color=text_color, fontsize=9)
-
-    ax.set_xticks(np.arange(len(labels)))
-    ax.set_yticks(np.arange(len(labels)))
     ax.set_xticklabels(labels, rotation=45, ha='right')
-    ax.set_yticklabels(labels)
-
+    
     for i in range(num_candidates, len(labels), num_candidates):
-        ax.axhline(i - 0.5, color='black', lw=2)
-        ax.axvline(i - 0.5, color='black', lw=2)
+        ax.axhline(i, color='black', lw=1.5)
+        ax.axvline(i, color='black', lw=1.5)
 
     plt.title("Hardware sensibility matrix (Cross-Layer interaction)", fontsize=16, pad=20)
     plt.xlabel("Layer & multiplier", fontsize=12)
     plt.ylabel("Layer & multiplier", fontsize=12)
     
+    cbar = ax.collections[0].colorbar
+    cbar.ax.set_ylabel('Delta Loss (with respect to quantized)', rotation=270, labelpad=20)
+    
     fig.tight_layout()
     
     out_img_name = "sensitivity_plot.png" 
     save_dir = save_path if save_path else os.path.dirname(npy_path)
+    
+    if total_loss:
+        out_img_name = "sensitivity_plot_total_loss.png"
+    else:
+        out_img_name = "sensitivity_plot_interaction_only.png"
+
     out_img = os.path.join(save_dir, out_img_name)
     plt.savefig(out_img, dpi=300)
-    print(f"Grafico salvato in alta risoluzione: {out_img}")
+    print(f"Grafico salvato in: {out_img}")
     
     plt.show()
-
 
 def analyze_best_combinations(matrix, index_map):
     """
@@ -117,8 +175,18 @@ if __name__ == "__main__":
     parser.add_argument("--map", type=str, default="sensitivity_matrix_map.json", help="Path to .json used for names")
     parser.add_argument("--cands", type=int, default=4, help="Number of multipliers tested for each layer")
     parser.add_argument("--save_path", type=str, help="directory path to save the output image")
+    parser.add_argument("--analyze", action="store_true", help="Analyze best combinations based on the matrix")
+    parser.add_argument("--total_loss", action="store_true", help="Use total loss instead of pure interaction for analysis")
+    parser.add_argument("--data_folder", type=str, help="Path to the folder containing both json map and npy matrix files")
     args = parser.parse_args()
 
-    visualize_sensitivity_matrix(args.matrix, args.map, args.cands, args.save_path)
+    if args.data_folder:
+        timestamp = args.data_folder.split("_")[-1]
+        args.matrix = os.path.join(args.data_folder, f"resnet8_sensitivity_matrix_{timestamp}.npy")
+        args.map = os.path.join(args.data_folder, f"resnet8_sensitivity_matrix_{timestamp}_map.json")
 
-    analyze_best_combinations(np.load(args.matrix), json.load(open(args.map, 'r')))
+    visualize_sensitivity_matrix(args.matrix, args.map, args.cands, args.save_path, total_loss=args.total_loss)
+
+    if args.analyze:
+        # analyze_best_combinations(np.load(args.matrix), json.load(open(args.map, 'r')))
+        pass

@@ -10,6 +10,11 @@ import time
 import mat_mul
 import modules.data_loaders as data_loader
 
+from datetime import datetime
+
+import json
+
+
 from modules.common import (
     trained_models_path, device,
     normalize_model_name, build_model,
@@ -155,18 +160,32 @@ def new_training_method(model_name: str, multiplier_matrix: str | list[str] = No
 
     #approx_tag = os.path.splitext(input_name)[0] if multiplier_matrix is isinstance(multiplier_matrix, str) else "default"
     if isinstance(multiplier_matrix, str):
-        approx_tag = os.path.splitext(os.path.basename(multiplier_matrix))[0]
+        mult_matrix_specs = [f"{os.path.basename(multiplier_matrix)}"]
     elif isinstance(multiplier_matrix, list):
-        approx_tag = "_".join(os.path.splitext(os.path.basename(m))[0] for m in multiplier_matrix)
+        mult_matrix_specs = [f"{os.path.basename(m)}" for m in multiplier_matrix]
     else:
-        approx_tag = "default"
+        mult_matrix_specs = ["m=default"]
         
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")  
     approx_noretrain_path = os.path.join(
-        models_dir, f"{model_name}_a{bit_width}_{approx_tag}_noretrain.pth"
+        models_dir, f"{model_name}_{timestamp}_noretrain.pth"
     )
     approx_retrained_best_path = os.path.join(
-        models_dir, f"{model_name}_a{bit_width}_{approx_tag}_retrained_best.pth"
+        models_dir, f"{model_name}_{timestamp}_retrained_best.pth"
     )
+
+    config_path = os.path.join(models_dir, "config", f"{timestamp}.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+
+    config_specs = {
+        "model_name": model_name,
+        "conv_type": conv_type,
+        "bit_width": bit_width,
+        "signed": signed,
+        "zone": zone,
+        "multiplier_matrix": mult_matrix_specs,
+    }
+
 
     num_classes = _classes if _classes else 10
 
@@ -249,6 +268,11 @@ def new_training_method(model_name: str, multiplier_matrix: str | list[str] = No
             acc = test(model)
             torch.save(model.state_dict(), approx_noretrain_path)
             print(f"Saved approximate (no-retrain) checkpoint to: {approx_noretrain_path}")
+
+            with open(config_path, "w") as f:
+                json.dump(config_specs, f, indent=4)
+            print(f"Saved training configuration to: {config_path}")
+
             return acc
             
         criterion = nn.CrossEntropyLoss()
@@ -279,6 +303,11 @@ def new_training_method(model_name: str, multiplier_matrix: str | list[str] = No
         checkpoint = best_state if best_state is not None else model.state_dict()
         torch.save(checkpoint, approx_retrained_best_path)
         print(f"Saved approximate (retrained-best) checkpoint to: {approx_retrained_best_path}")
+
+        with open(config_path, "w") as f:
+            json.dump(config_specs, f, indent=4)
+        print(f"Saved training configuration to: {config_path}")
+
         return best_accuracy
 
     # ---- conv_type 5: Calibration Statistics Collection ----
@@ -380,6 +409,7 @@ if __name__ == "__main__":
                     print(f"Error: No .npy files found in the directory '{p}'.")
                     sys.exit(1)
             _debug_print("layer_mode=1 file_list=" + ", ".join(os.path.basename(f) for f in file_list))
+            results = {}
             for file in file_list:
                 acc = new_training_method(
                     args.model_name,
@@ -392,7 +422,11 @@ if __name__ == "__main__":
                     args.no_retraining
                 )
                 print(f"FINAL_ACCURACY:{acc}")
+                results[file] = acc
                 clean_gpu()
+
+            print("Batch results dictionary:", results)
+            print(f"Total training time: {time.time() - start:.2f} seconds")
 
         # Scenario 2.2: Layer mode 2 - Use x npy files for the correspoding x layers, if a layer has no corresponding npy file it will use the default multiplier
         if args.layer_mode == "2":
