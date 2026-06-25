@@ -6,7 +6,7 @@ import argparse
 import re
 import seaborn as sns
 
-def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_path=None, total_loss=False):
+def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_path=None, total_loss=False, psd=False):
     """
     Load and visualize sensitivity matrix using Seaborn with sorted MAE.
     """
@@ -21,7 +21,7 @@ def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_pat
         print("Conversione da interazione pura a loss totale (CLADO default)...")
         diag = np.diag(matrix) # Estrae le loss individuali (L_i e L_j)
 
-        # Applica vettorialmente: L_ij = 2 * S_ij + L_i + L_j
+        # L_ij = 2 * S_ij + L_i + L_j
         total_loss_matrix = 2.0 * matrix + (diag[:, None] + diag[None, :])
 
         dim = total_loss_matrix.shape[0]
@@ -30,18 +30,17 @@ def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_pat
         for i in range(0, dim, passo):
             total_loss_matrix[i:i+passo, i:i+passo] = 0
 
-        # Ripristina la diagonale (le loss individuali rimangono invariate)
         np.fill_diagonal(total_loss_matrix, diag)
 
-        # Sostituisce la matrice con quella della loss totale
         matrix = total_loss_matrix
     # -----------------------------------------------------
 
     # PSD transformation as in CLADO
-    # es, us = np.linalg.eig(matrix)
-    # es[es < 0] = 0
-    # matrix = us @ np.diag(es) @ us.T
-    # matrix = (matrix + matrix.T) / 2
+    if psd:
+        es, us = np.linalg.eig(matrix)
+        es[es < 0] = 0
+        matrix = us @ np.diag(es) @ us.T
+        matrix = (matrix + matrix.T) / 2
     
     with open(json_path, 'r') as f:
         index_map = json.load(f)
@@ -100,12 +99,17 @@ def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_pat
         ax.axhline(i, color='black', lw=1.5)
         ax.axvline(i, color='black', lw=1.5)
 
-    plt.title("Hardware sensibility matrix (Cross-Layer interaction)", fontsize=16, pad=20)
+    if total_loss and not psd:
+        plt.title("DELTA LOSS matrix", fontsize=16, pad=20)
+    if total_loss and psd:
+        plt.title("DELTA LOSS matrix (with PSD transformation)", fontsize=16, pad=20)
+    else:
+        plt.title("INTERACTION (sensitivity) matrix", fontsize=16, pad=20)
     plt.xlabel("Layer & multiplier", fontsize=12)
     plt.ylabel("Layer & multiplier", fontsize=12)
     
     cbar = ax.collections[0].colorbar
-    cbar.ax.set_ylabel('Delta Loss (with respect to quantized)', rotation=270, labelpad=20)
+    cbar.ax.set_ylabel('delta loss/interaction', rotation=270, labelpad=20)
     
     fig.tight_layout()
     
@@ -113,9 +117,11 @@ def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_pat
     save_dir = save_path if save_path else os.path.dirname(npy_path)
     
     if total_loss:
-        out_img_name = "sensitivity_plot_total_loss.png"
+        out_img_name = "mult_CLADO_delta_loss.png"
+        if psd:
+            out_img_name = "mult_CLADO_delta_loss_PSD.png"
     else:
-        out_img_name = "sensitivity_plot_interaction_only.png"
+        out_img_name = "mult_CLADO_interaction.png"
 
     out_img = os.path.join(save_dir, out_img_name)
     plt.savefig(out_img, dpi=300)
@@ -178,6 +184,7 @@ if __name__ == "__main__":
     parser.add_argument("--analyze", action="store_true", help="Analyze best combinations based on the matrix")
     parser.add_argument("--total_loss", action="store_true", help="Use total loss instead of pure interaction for analysis")
     parser.add_argument("--data_folder", type=str, help="Path to the folder containing both json map and npy matrix files")
+    parser.add_argument("--psd", action="store_true", help="Apply PSD transformation to the matrix before visualization")
     args = parser.parse_args()
 
     if args.data_folder:
@@ -185,7 +192,7 @@ if __name__ == "__main__":
         args.matrix = os.path.join(args.data_folder, f"resnet8_sensitivity_matrix_{timestamp}.npy")
         args.map = os.path.join(args.data_folder, f"resnet8_sensitivity_matrix_{timestamp}_map.json")
 
-    visualize_sensitivity_matrix(args.matrix, args.map, args.cands, args.save_path, total_loss=args.total_loss)
+    visualize_sensitivity_matrix(args.matrix, args.map, args.cands, args.save_path, total_loss=args.total_loss, psd=args.psd)
 
     if args.analyze:
         # analyze_best_combinations(np.load(args.matrix), json.load(open(args.map, 'r')))
