@@ -7,29 +7,45 @@ import sys
 import time
 import mat_mul
 import modules.data_loaders as data_loader
-
+import modules.convolution as conv
 from modules.common import (
     trained_models_path, device,
     normalize_model_name, build_model,
     setup_seed, clean_gpu,
     train_loader, test_loader, _classes,
 )
-
+import numpy as np
+import sys
+import mqbench
 
 def calibration(model, stats=False):
     """Calibrates model activations/weights using the training set."""
     print("Calibrating model...")
+
+    for m in model.modules():
+        if isinstance(m, conv.Conv2d_custom):
+            m.calibrating = True
+
     if stats:
         model.eval()
     else:
         model.train()
-    for inputs, _ in train_loader:
-        inputs = inputs.to(device)
-        model(inputs)
 
-def set_data_loaders(model_name: str, batch_size: int = 64):
+    with torch.no_grad():
+        for i, (inputs, _) in enumerate(train_loader):
+            if i >= 2048 // batch_size:
+                break
+            inputs = inputs.to(device)
+            model(inputs)
+
+    for m in model.modules():
+        if isinstance(m, conv.Conv2d_custom):
+            m.freeze_qparams()
+
+
+def set_data_loaders(model_name: str):
     """Sets appropriate batch sizes based on the model architecture and loads data."""
-    global train_loader, test_loader, _classes
+    global train_loader, test_loader, _classes, batch_size
     name = model_name.lower()
 
     if name in ("lenet5", "resnet", "resnet8"):
@@ -143,9 +159,7 @@ def new_training_method(model_name: str, multiplier_matrix=None, conv_type: int 
     approx_retrained_best_path = os.path.join(
         models_dir, f"{model_name}_a{bit_width}_{approx_tag}_retrained_best.pth"
     )
-
     num_classes = _classes if _classes else 10
-
     # ---- conv_type 1: Exact (FP32) Model ----
     if conv_type == 1:
         model = build_model(model_name, conv_type=1, bit_width=bit_width, signed=signed,
