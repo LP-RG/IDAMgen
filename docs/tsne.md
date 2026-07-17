@@ -40,6 +40,7 @@ This runs t-SNE on the **exact** (float) checkpoint with all defaults (see table
 | `--tsne-no-save-static` | flag | — | Suppress static PNG output. |
 | `--tsne-no-save-dash-artifact` | flag | — | Suppress `.npz` Dash artifact output. |
 | `--train-if-missing` | flag | `False` | Automatically train missing checkpoints before running t-SNE. |
+| `--tsne_components` | str | `2D` | Allowed dimensional reductions are `2D`, `3D`, or the combination of both with `2D+3D`|
 
 ### Multi-stage comparison example
 
@@ -114,6 +115,7 @@ A matplotlib scatter plot with:
 - **Red ×** — misclassified test samples.
 - **Class label text** — centred on each cluster.
 - Accuracy annotation in the lower-left corner.
+Supported only with the `2D`, `2D+3D` --tsne_components CLO.
 
 ### Misclassification grid (`misclassified/`)
 Saved only when `--show_misclassifications` is set. Each cell shows the raw
@@ -121,8 +123,7 @@ image with `true=` / `pred=` labels in red.
 
 ### Dash artifact (`.npz`)
 A compressed NumPy archive consumed by the interactive app (see [Dash App](dash_app.md)).
-Contains all arrays needed to reconstruct the plot and preview misclassified
-images without re-running t-SNE.
+Contains all arrays needed to reconstruct the plot and preview misclassified images without re-running t-SNE.
 
 ### Run Metadata (`metadata.json`)
 Automatically generated on every run. Logs hyper-parameters (seed, max_train, etc.) ensuring that artifacts in the same `run_` directory are completely comparable.
@@ -174,7 +175,6 @@ python3 tools/tsne_visualization/tsne_runner.py \
 
 ```bash
 python3 tools/tsne_visualization/web_visualization/tsne_dash_app.py
-# In the browser: paste a run directory path. Relative paths are resolved
-# against the repo root, so use e.g.:
-#   tools/tsne_visualization/plots/layer/resnet/run_20260515_181919
+# In the browser: paste a run directory path. Relative paths are resolved against the repo root, 
+# so use e.g.: tools/tsne_visualization/plots/layer/resnet/run_20260515_181919
 ```

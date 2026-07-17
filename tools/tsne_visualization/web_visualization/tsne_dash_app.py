@@ -18,6 +18,8 @@ from PIL import Image
 from tools.tsne_visualization.tsne_utils import (
     get_misclassified_indices,
     load_dash_artifact,
+    has_2d,
+    has_3d
 )
 
 def _image_to_data_url(flat_img, image_shape):
@@ -42,8 +44,16 @@ def _build_plot_figure(data):
     """Build the interactive Plotly t-SNE figure and misclassification mapping."""
     import plotly.graph_objects as go
     import seaborn as sns
+    
+    if has_2d(data):
+        X_2d = data["X_2d"]    
+    else:
+        X_2d = []
+    if has_3d(data):
+        X_3d = data["X_3d"]    
+    else:
+        X_3d = []
 
-    X_2d = data["X_2d"]
     y_all = data["y_all"]
     test_mask = data["test_mask"].astype(bool)
     y_test_sub = data["y_test_sub"]
@@ -53,16 +63,35 @@ def _build_plot_figure(data):
     wrong_mask = np.zeros(len(y_all), dtype=bool)
     wrong_mask[test_mask] = (y_test_sub != y_pred_sub)
 
-    fig = go.Figure()
-    fig.add_trace(go.Scattergl(
-        x=X_2d[train_mask, 0],
-        y=X_2d[train_mask, 1],
-        mode="markers",
-        marker=dict(size=5, color="#cccccc", opacity=0.4),
-        name="Train (not evaluated)",
-        hoverinfo="skip",
-        showlegend=True,
-    ))
+    fig_2d = go.Figure()
+    fig_3d = go.Figure()
+
+    # layout[i] describes curveNumber i for fig_2d.data and fig_3d.data
+    layout = []
+
+    # train trace
+    layout.append(None) # train points not resolvable
+    if has_2d(data):
+        fig_2d.add_trace(go.Scattergl(
+            x=X_2d[train_mask, 0],
+            y=X_2d[train_mask, 1],
+            mode="markers",
+            marker=dict(size=4, color="#cccccc", opacity=0.6),
+            name="Train (NE)",
+            hoverinfo="skip",
+            showlegend=True,
+        ))
+    if has_3d(data):
+        fig_3d.add_trace(go.Scatter3d(
+            x=X_3d[train_mask, 0],
+            y=X_3d[train_mask, 1],
+            z=X_3d[train_mask, 2],
+            mode="markers",
+            marker=dict(size=4, color="#cccccc", opacity=0.6),
+            name="Train (NE)",
+            hoverinfo="skip",
+            showlegend=True,        
+        ))
 
     unique_labels = np.unique(y_all)
     palette = np.array(sns.color_palette("hls", len(unique_labels)))
@@ -71,74 +100,162 @@ def _build_plot_figure(data):
         for lab, rgb in zip(unique_labels, palette)
     }
 
+    # test traces
+    n_train = int(train_mask.sum())
     for lab in unique_labels:
         mask = test_mask & (y_all == lab)
         if not np.any(mask):
             continue
-        fig.add_trace(go.Scattergl(
-            x=X_2d[mask, 0],
-            y=X_2d[mask, 1],
-            mode="markers",
-            marker=dict(size=8, color=label_to_color[int(lab)], opacity=0.85),
-            name=f"Test label {int(lab)}",
-            customdata=np.full(mask.sum(), -1, dtype=np.int64),
-            hovertemplate="x=%{x:.2f}<br>y=%{y:.2f}<br>true=%{text}<extra></extra>",
-            text=np.full(mask.sum(), int(lab), dtype=np.int64),
-            showlegend=True,
-        ))
+        test_sub_indices = np.where(mask)[0] - n_train
+        layout.append(test_sub_indices)
+        if has_2d(data):
+            fig_2d.add_trace(go.Scattergl(
+                x=X_2d[mask, 0],
+                y=X_2d[mask, 1],
+                mode="markers",
+                marker=dict(size=7, color=label_to_color[int(lab)], opacity=0.85),
+                name=f"Test label {int(lab)}",
+                customdata=np.full(mask.sum(), -1, dtype=np.int64),
+                hovertemplate="x=%{x:.2f}<br>y=%{y:.2f}<br>true=%{text}<extra></extra>",
+                text=np.full(mask.sum(), int(lab), dtype=np.int64),
+                showlegend=True
+            ))
+        if has_3d(data):
+            fig_3d.add_trace(go.Scatter3d(
+                x=X_3d[mask, 0],
+                y=X_3d[mask, 1],
+                z=X_3d[mask, 2],
+                mode="markers",
+                marker=dict(size=7, color=label_to_color[int(lab)], opacity=1),
+                name=f"Test label {int(lab)}",
+                customdata=np.full(mask.sum(), -1, dtype=np.int64),
+                hovertemplate="x=%{x:.2f}<br>y=%{y:.2f}<br>z=%{z:.2f}<br>true=%{text}<extra></extra>",
+                text=np.full(mask.sum(), int(lab), dtype=np.int64),
+                showlegend=True
+            ))
 
+    # misclassified trace
     wrong_indices = np.where(wrong_mask)[0]
     wrong_test_indices = get_misclassified_indices(y_test_sub, y_pred_sub)
-    mis_trace_idx = None
     if len(wrong_indices) > 0:
-        mis_trace_idx = len(fig.data)
-        fig.add_trace(go.Scattergl(
-            x=X_2d[wrong_indices, 0],
-            y=X_2d[wrong_indices, 1],
-            mode="markers",
-            marker=dict(symbol="x", size=14, color="red", line=dict(width=2, color="red")),
-            name=f"Misclassified ({len(wrong_indices)})",
-            customdata=wrong_test_indices,
-            hovertemplate=("x=%{x:.2f}<br>y=%{y:.2f}<br>"
-                           "true=%{text}<br>pred=%{meta}<extra></extra>"),
-            text=y_test_sub[wrong_test_indices],
-            meta=y_pred_sub[wrong_test_indices],
-            showlegend=True,
-        ))
+        layout.append(wrong_test_indices)
+        if has_2d(data):
+            fig_2d.add_trace(go.Scattergl(
+                x=X_2d[wrong_indices, 0],
+                y=X_2d[wrong_indices, 1],
+                mode="markers",
+                marker=dict(symbol="x", size=14, color="red", line=dict(width=2, color="red")),
+                name=f"Misclassified ({len(wrong_indices)})",
+                customdata=wrong_test_indices,
+                hovertemplate=("x=%{x:.2f}<br>y=%{y:.2f}<br>"
+                            "true=%{text}<br>pred=%{meta}<extra></extra>"),
+                text=y_test_sub[wrong_test_indices],
+                meta=y_pred_sub[wrong_test_indices],
+                showlegend=True
+            ))
+        if has_3d(data):
+            fig_3d.add_trace(go.Scatter3d(
+                x=X_3d[wrong_indices, 0],
+                y=X_3d[wrong_indices, 1],
+                z=X_3d[wrong_indices, 2],
+                mode="markers",
+                marker=dict(symbol="x", size=10, color="red"),
+                name=f"Misclassified ({len(wrong_indices)})",
+                customdata=wrong_test_indices,
+                hovertemplate=("x=%{x:.2f}<br>y=%{y:.2f}<br>z=%{z:.2f}<br>"
+                            "true=%{text}<br>pred=%{meta}<extra></extra>"),
+                text=y_test_sub[wrong_test_indices],
+                meta=y_pred_sub[wrong_test_indices],
+                showlegend=True
+            ))
 
-    ref_mask = test_mask if np.any(test_mask) else np.ones(len(y_all), dtype=bool)
+    # cluster label annotations
+    if np.any(test_mask):   # if test_mask has any points use those
+        ref_mask = test_mask
+    else:   # otherwise use entire dataset
+        ref_mask = np.ones(len(y_all), dtype=bool)
+
+    scene_annotations = []    
     for lab in unique_labels:
-        pts = X_2d[ref_mask & (y_all == lab)]
-        if len(pts) == 0:
-            continue
-        xtext, ytext = np.median(pts, axis=0)
-        fig.add_annotation(
-            x=float(xtext),
-            y=float(ytext),
-            text=str(int(lab)),
-            showarrow=False,
-            font=dict(size=20, color="black"),
-            bgcolor="rgba(255,255,255,0.8)",
-        )
+        if has_2d(data):
+            pts_2d = X_2d[ref_mask & (y_all == lab)]
+            if len(pts_2d) == 0:
+                continue
+            xtext, ytext = np.median(pts_2d, axis=0)
+            
+            d = 2  # halo thickness in pixels
+            offsets = [(-d, -d), (-d, 0), (-d, d), ( 0, -d), ( 0, d), ( d, -d), ( d, 0), ( d, d)]
+            for i in range(len(offsets)):
+                fig_2d.add_annotation(
+                    x=float(xtext), y=float(ytext),
+                    xshift = offsets[i][0], yshift = offsets[i][1],
+                    text=str(int(lab)),
+                    showarrow=False,
+                    font=dict(size=20, color="white"),
+                    # bgcolor="rgba(255,255,255,0.8)",
+                )
+            fig_2d.add_annotation(
+                x=float(xtext),
+                y=float(ytext),
+                text=str(int(lab)),
+                showarrow=False,
+                font=dict(size=20, color="black")
+            )
 
-    title_value = data.get("title", "t-SNE")
+        if has_3d(data):
+            pts_3d = X_3d[ref_mask & (y_all == lab)]
+            if len(pts_3d) == 0:
+                continue            
+            xtext, ytext, ztext = np.median(pts_3d, axis=0)
+            for i in range(len(offsets)):
+                scene_annotations.append(dict(
+                    x=float(xtext), y=float(ytext), z=float(ztext),
+                    xshift = offsets[i][0], yshift = offsets[i][1],
+                    text=str(int(lab)),
+                    showarrow=False,
+                    font=dict(size=20, color="white")
+                ))
+            scene_annotations.append(dict(
+                x=float(xtext),
+                y=float(ytext),
+                z=float(ztext),
+                text=str(int(lab)),
+                showarrow=False,
+                font=dict(size=20, color="black"),
+            ))
+            fig_3d.update_layout(scene = dict(annotations = scene_annotations))
+
     # Backward/forward compatible: artifacts may expose title as numpy scalar
     # (with .item()) or already as a plain Python string.
+    title_value = data.get("title", "t-SNE")
     if hasattr(title_value, "item"):
         title_value = title_value.item()
     title = str(title_value)
-    fig.update_layout(
-        title=title,
-        template="simple_white",
-        width=1000,
-        height=800,
-        clickmode="event+select",
-        legend=dict(x=0.99, y=0.99, xanchor="right", yanchor="top"),
-        margin=dict(l=20, r=20, t=80, b=20),
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
-    )
-    return fig, mis_trace_idx, wrong_test_indices
+
+    if has_2d(data):
+        fig_2d.update_layout(
+            template="plotly_white",
+            autosize = True,
+            clickmode="event+select",
+            legend=dict(x=0.99, y=0.99, xanchor="right", yanchor="top", entrywidth=0, entrywidthmode='pixels'),
+            margin=dict(l=0, r=0, t=10, b=0),
+            xaxis=dict(visible=True),
+            yaxis=dict(visible=True, scaleanchor="x", scaleratio=1)
+        )
+    if has_3d(data):
+        fig_3d.update_layout(
+            template="plotly_white",
+            clickmode="event+select",
+            legend=dict(x=0.99, y=0.99, xanchor="right", yanchor="top"),
+            margin=dict(l=0, r=0, t=10, b=0),
+            scene=dict(
+                aspectmode="data",
+                xaxis=dict(visible=True),
+                yaxis=dict(visible=True),
+                zaxis=dict(visible=True)
+            )
+        )
+    return fig_2d, fig_3d, layout, title
 
 
 def _blank_figure(message="Load an artifact to visualize t-SNE."):
@@ -169,12 +286,12 @@ def _blank_figure(message="Load an artifact to visualize t-SNE."):
 def _load_artifact(artifact_path):
     """Load an artifact and build both figure and lightweight callback state."""
     data = load_dash_artifact(artifact_path)
-    fig, mis_trace_idx, _ = _build_plot_figure(data)
+    fig_2d, fig_3d, layout, title = _build_plot_figure(data)
     payload = {
         "path": artifact_path,
-        "mis_trace_idx": mis_trace_idx,
+        "layout": [None if i is None else i.tolist() for i in layout]
     }
-    return fig, payload
+    return fig_2d, fig_3d, payload, title
 
 
 def _load_run_dir(run_dir):
@@ -239,7 +356,7 @@ def create_app():
             ),
             # MIDDLE ROW
             html.Div(
-                style={"display": "flex", "flexDirection": "row", "gap": "16px", "flex": 1, "minHeight": "600px"},
+                style={"display": "flex", "flexDirection": "row", "gap": "16px", "flex": 1, "minHeight": "1100px"},
                 children=[
                     html.Div(
                         style={"flex": 1, "display": "flex", "flexDirection": "column", "gap": "8px", "backgroundColor": "white", "padding": "12px", "borderRadius": "8px", "boxShadow": "0 2px 4px rgba(0,0,0,0.1)", "minWidth": 0},
@@ -248,10 +365,34 @@ def create_app():
                                 style={"display": "flex", "flexDirection": "row", "alignItems": "center", "gap": "8px"},
                                 children=[
                                     html.Label("Left View:", style={"fontWeight": "bold"}),
-                                    dcc.Dropdown(id="left-dropdown", style={"flex": 1}, clearable=False),
+                                    dcc.Dropdown(id="left-dropdown", style={"flex": 1}, clearable=False)
                                 ]
                             ),
-                            dcc.Loading(dcc.Graph(id="left-graph", figure=_blank_figure(), style={"flex": 1}, config={"displaylogo": False}))
+                            html.Div(
+                                id = "left-graph-2d-container",
+                                style = {"display": "flex", "flexDirection": "column", "flex": 1, "minHeight": "500px", "minWidth": 0},
+                                children = [
+                                    html.Div(id = "left-graph-2d-title", style = {"fontWeight": "bold", "textAlign": "center"}),
+                                    dcc.Loading(
+                                        dcc.Graph(id="left-graph-2d", figure=_blank_figure(), style={"flex": 1, "minWidth": 0}, config={"displaylogo": False, "responsive": True}),
+                                        style={"flex": 1, "display": "flex", "width": "100%", "minWidth": 0},
+                                        parent_style={"flex": 1, "display": "flex", "width": "100%"},
+                                    )
+
+                                ]
+                            ),
+                            html.Div(
+                                id = "left-graph-3d-container",
+                                style = {"display": "flex", "flexDirection": "column", "flex": 1, "minHeight": "500px", "minWidth": 0},
+                                children = [
+                                    html.Div(id = "left-graph-3d-title", style = {"fontWeight": "bold", "textAlign": "center"}),
+                                    dcc.Loading(
+                                        dcc.Graph(id="left-graph-3d", figure=_blank_figure(), style={"flex": 1, "minWidth": 0}, config={"displaylogo": False, "responsive": True}),
+                                        style={"flex": 1, "display": "flex", "width": "100%", "minWidth": 0},
+                                        parent_style={"flex": 1, "display": "flex", "width": "100%"}
+                                    )
+                                ]
+                            )
                         ]
                     ),
                     html.Div(
@@ -261,12 +402,36 @@ def create_app():
                                 style={"display": "flex", "flexDirection": "row", "alignItems": "center", "gap": "8px"},
                                 children=[
                                     html.Label("Right View:", style={"fontWeight": "bold"}),
-                                    dcc.Dropdown(id="right-dropdown", style={"flex": 1}, clearable=True, placeholder="Select an artifact to compare..."),
+                                    dcc.Dropdown(id="right-dropdown", style={"flex": 1}, clearable=True, placeholder="Select an artifact to compare...")
                                 ]
                             ),
-                            dcc.Loading(dcc.Graph(id="right-graph", figure=_blank_figure("Select a second artifact to compare."), style={"flex": 1}, config={"displaylogo": False}))
+                            html.Div(
+                                id = "right-graph-2d-container",
+                                style = {"display": "flex", "flexDirection": "column", "flex": 1, "minHeight": "500px", "minWidth": 0},
+                                children = [
+                                    html.Div(id = "right-graph-2d-title", style = {"fontWeight": "bold", "textAlign": "center"}),
+                                    dcc.Loading(
+                                        dcc.Graph(id="right-graph-2d", figure=_blank_figure(), style={"flex": 1, "minWidth": 0}, config={"displaylogo": False, "responsive": True}),
+                                        style={"flex": 1, "display": "flex", "width": "100%", "minWidth": 0},
+                                        parent_style={"flex": 1, "display": "flex", "width": "100%"}
+                                    )
+                                ]
+                            ),
+                            html.Div(
+                                id = "right-graph-3d-container",
+                                style = {"display": "flex", "flexDirection": "column", "flex": 1, "minHeight": "500px", "minWidth": 0},
+                                children = [
+                                    html.Div(id = "right-graph-3d-title", style = {"fontWeight": "bold", "textAlign": "center"}), 
+                                    # "padding": "4px 0"                                   
+                                    dcc.Loading(
+                                        dcc.Graph(id="right-graph-3d", figure=_blank_figure(), style={"flex": 1, "minWidth": 0}, config={"displaylogo": False, "responsive": True}),
+                                        style={"flex": 1, "display": "flex", "width": "100%", "minWidth": 0},
+                                        parent_style={"flex": 1, "display": "flex", "width": "100%"}
+                                    )
+                                ]
+                            )
                         ]
-                    ),
+                    )
                 ]
             ),
             # BOTTOM ROW
@@ -278,7 +443,7 @@ def create_app():
                 },
                 children=[
                     html.Div(style={"width": "200px"}, children=[
-                        html.H4("Misclassified Preview", style={"margin": "0 0 8px 0"}),
+                        html.H4("Preview", style={"margin": "0 0 8px 0"}),
                         html.Div(id="preview-message", children=initial_msg, style={"fontSize": "13px"}),
                     ]),
                     html.Img(id="preview-image", style={"height": "120px", "objectFit": "contain", "border": "1px solid #ddd", "backgroundColor": "#fafafa", "display": "none"}),
@@ -337,48 +502,79 @@ def create_app():
             return None, [], [], None, None, f"Error: {e}", meta_style_hidden, ""
 
     @app.callback(
-        Output("left-graph", "figure"),
+        Output("left-graph-2d", "figure"),
+        Output("left-graph-3d", "figure"),
+        Output("left-graph-2d-container", "style"),
+        Output("left-graph-3d-container", "style"),
+        Output("left-graph-2d-title", "children"),
+        Output("left-graph-3d-title", "children"),
         Output("left-state", "data"),
         Input("left-dropdown", "value"),
         Input("clear-reset", "n_clicks"),
         prevent_initial_call=True,
     )
     def _update_left_graph(artifact_path, clear_clicks):
+        visible = {"display": "flex", "flexDirection": "column", "flex": 1, "minHeight": "500px", "minWidth": 0}
+        hidden = {"display": "none"}
         if callback_context.triggered_id == "clear-reset" or not artifact_path:
-            return _blank_figure(), None
+            return _blank_figure(), _blank_figure(), visible, visible, "", "", None
         try:
-            return _load_artifact(artifact_path)
+            fig_2d, fig_3d, payload, title = _load_artifact(artifact_path)
+            # determine each container's visibility based on if that specific figure has any traces
+            style_2d = visible if len(fig_2d.data) > 0 else hidden
+            style_3d = visible if len(fig_3d.data) > 0 else hidden
+            title_2d = "2D " + title
+            title_3d = "3D " + title
+            return fig_2d, fig_3d, style_2d, style_3d, title_2d, title_3d, payload
         except Exception as e:
-            return _blank_figure(f"Error loading artifact: {e}"), None
+            er_fig = _blank_figure(f"Error loading artifact: {e}")
+            return er_fig, er_fig, visible, visible, "", "", None
 
     @app.callback(
-        Output("right-graph", "figure"),
+        Output("right-graph-2d", "figure"),
+        Output("right-graph-3d", "figure"),
+        Output("right-graph-2d-container", "style"),
+        Output("right-graph-3d-container", "style"),
+        Output("right-graph-2d-title", "children"),
+        Output("right-graph-3d-title", "children"),        
         Output("right-state", "data"),
         Input("right-dropdown", "value"),
         Input("clear-reset", "n_clicks"),
-        prevent_initial_call=True,
+        prevent_initial_call=True   # wont run funciton when page first loads
     )
     def _update_right_graph(artifact_path, clear_clicks):
+        visible = {"display": "flex", "flexDirection": "column", "flex": 1, "minHeight": "500px", "minWidth": 0}
+        hidden = {"display": "none"}
         if callback_context.triggered_id == "clear-reset" or not artifact_path:
-            return _blank_figure("Select a second artifact to compare."), None
+            mes = _blank_figure("Select a second artifact to compare.")
+            return mes, mes, visible, visible, "", "", None
         try:
-            return _load_artifact(artifact_path)
+            fig_2d, fig_3d, payload, title = _load_artifact(artifact_path)
+            style_2d = visible if len(fig_2d.data) > 0 else hidden
+            style_3d = visible if len(fig_3d.data) > 0 else hidden
+            title_2d = "2D " + title
+            title_3d = "3D " + title
+            return fig_2d, fig_3d, style_2d, style_3d, title_2d, title_3d, payload
         except Exception as e:
-            return _blank_figure(f"Error loading artifact: {e}"), None
+            er_fig = _blank_figure(f"Error loading artifact: {e}")
+            return er_fig, er_fig, visible, visible, "", "",  None
 
     @app.callback(
         Output("preview-message", "children"),
         Output("preview-image", "src"),
         Output("preview-image", "style"),
         Output("preview-meta", "children"),
-        Input("left-graph", "clickData"),
-        Input("right-graph", "clickData"),
+        Input("left-graph-2d", "clickData"),
+        Input("left-graph-3d", "clickData"),
+        Input("right-graph-2d", "clickData"),
+        Input("right-graph-3d", "clickData"),
         Input("clear-reset", "n_clicks"),
         State("left-state", "data"),
         State("right-state", "data"),
-        prevent_initial_call=True,
+        prevent_initial_call=True
     )
-    def _update_preview(left_click, right_click, clear_clicks, left_state, right_state):
+    def _update_preview(left_click_2d, left_click_3d, right_click_2d, right_click_3d, 
+                        clear_clicks, left_state, right_state):
         trigger = callback_context.triggered_id
         img_style_hidden = {"display": "none"}
         img_style_visible = {"height": "120px", "objectFit": "contain", "border": "1px solid #ddd", "backgroundColor": "white", "display": "block"}
@@ -386,42 +582,55 @@ def create_app():
         if trigger == "clear-reset":
             return initial_msg, "", img_style_hidden, ""
             
-        click_data = left_click if trigger == "left-graph" else right_click
-        state = left_state if trigger == "left-graph" else right_state
+        if trigger == "left-graph-2d":
+            click_data = left_click_2d
+            state = left_state
+        elif trigger == "left-graph-3d":
+            click_data = left_click_3d
+            state = left_state
+        elif trigger == "right-graph-2d":
+            click_data = right_click_2d
+            state = right_state
+        else:
+            click_data = right_click_3d
+            state = right_state
         
         if not state or not click_data:
             raise PreventUpdate
-            
-        mis_trace_idx = state.get("mis_trace_idx")
-        if mis_trace_idx is None:
-            return "No misclassified points in this artifact.", "", img_style_hidden, ""
-            
+ 
         point = click_data["points"][0]
-        if int(point.get("curveNumber", -1)) != mis_trace_idx:
-            return "Only red misclassified crosses are interactive.", "", img_style_hidden, ""
-            
-        pi = int(point.get("pointIndex", -1))
-        artifact = load_dash_artifact(state["path"])
-        wrong_test_indices = get_misclassified_indices(artifact["y_test_sub"], artifact["y_pred_sub"])
-        
-        if pi < 0 or pi >= len(wrong_test_indices):
+        curve_num = int(point.get("curveNumber", -1))
+        point_num = int(point.get("pointNumber", -1))
+
+        layout = state.get("layout") or []
+        if curve_num < 0 or curve_num >= len(layout):
             return "Could not resolve clicked point.", "", img_style_hidden, ""
-            
-        test_idx = int(wrong_test_indices[pi])
+
+        id_array = layout[curve_num]
+        if id_array is None:
+            return "No preview available for train points (test points only).", "", img_style_hidden, ""
+        if point_num < 0 or point_num >= len(id_array):
+            return "Could not resolve clicked point.", "", img_style_hidden, ""
+
+        idx = int(id_array[point_num])
+        artifact = load_dash_artifact(state["path"])
+        if idx < 0 or idx >= len(artifact["y_test_sub"]):
+            return "Could not resolve clicked point.", "", img_style_hidden, ""
+
         image_shape = artifact["image_shape"]
         X_test_pixels = artifact["X_test_pixels"]
-        img_src = _image_to_data_url(X_test_pixels[test_idx], image_shape)
-        
+        img_src = _image_to_data_url(X_test_pixels[idx], image_shape)
+
         meta = (
             f"Artifact: {Path(state['path']).name}\n"
-            f"Test Index: {test_idx}\n"
-            f"True Label: {int(artifact['y_test_sub'][test_idx])}\n"
-            f"Predicted Label: {int(artifact['y_pred_sub'][test_idx])}"
+            f"Test Index: {idx}\n"
+            f"True Label: {int(artifact['y_test_sub'][idx])}\n"
+            f"Predicted Label: {int(artifact['y_pred_sub'][idx])}"
         )
-        return "Selected misclassified sample:", img_src, img_style_visible, meta
+
+        return "Selected sample:", img_src, img_style_visible, meta
 
     return app
-
 
 def main():
     parser = argparse.ArgumentParser(description="Dash app for t-SNE artifacts and on-demand runs.")

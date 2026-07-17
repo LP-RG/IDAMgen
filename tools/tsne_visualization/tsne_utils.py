@@ -85,7 +85,7 @@ def get_misclassified_indices(y_test_sub, y_pred_sub):
     return np.where(y_test_sub != y_pred_sub)[0]
 
 
-def save_dash_artifact(artifact_path, X_2d, y_all, test_mask, y_test_sub,
+def save_dash_artifact(artifact_path, X_2d, X_3d, y_all, test_mask, y_test_sub,
                        y_pred_sub, X_test_pixels, image_shape,
                        model_name, feature_space, feature_layer_path,
                        feature_layer_requested, output_tag, classes, title):
@@ -93,7 +93,8 @@ def save_dash_artifact(artifact_path, X_2d, y_all, test_mask, y_test_sub,
     os.makedirs(os.path.dirname(artifact_path) or ".", exist_ok=True)
     np.savez_compressed(
         artifact_path,
-        X_2d=np.asarray(X_2d),
+        X_2d=np.asarray(X_2d if X_2d is not None else []),
+        X_3d=np.asarray(X_3d if X_3d is not None else []),
         y_all=np.asarray(y_all),
         test_mask=np.asarray(test_mask, dtype=bool),
         y_test_sub=np.asarray(y_test_sub),
@@ -115,15 +116,18 @@ def save_dash_artifact(artifact_path, X_2d, y_all, test_mask, y_test_sub,
 def load_dash_artifact(path):
     """Load a .npz Dash artifact and return its contents as a Python dictionary.
     
-    Keys: X_2d, y_all, test_mask, y_test_sub, y_pred_sub, X_test_pixels,
+    Keys: X_2d, X_3d, y_all, test_mask, y_test_sub, y_pred_sub, X_test_pixels,
           image_shape, model_name, feature_space, feature_layer_path,
           feature_layer_requested, output_tag, title.
+
+    X_2d and X_3d may be empty if the respecitive dimenisonality wasnt computed.          
     All numpy scalars are already cast to plain Python types.
     """
     data = np.load(path, allow_pickle=False)
     return {
         "path": str(path),
-        "X_2d": data["X_2d"],
+        "X_2d": data["X_2d"] if "X_2d" in data else np.array([]),
+        "X_3d": data["X_3d"] if "X_3d" in data else np.array([]),
         "y_all": data["y_all"],
         "test_mask": data["test_mask"].astype(bool),
         "y_test_sub": data["y_test_sub"],
@@ -138,6 +142,16 @@ def load_dash_artifact(path):
         "title": str(data["title"].item()) if "title" in data else "t-SNE",
     }
 
+
+# respectively returns whether specified dimensionality was computed
+def has_2d(data):
+    x = data.get("X_2d")
+    return x is not None and getattr(x, "size", 0) > 0
+
+def has_3d(data):
+    x = data.get("X_3d")
+    return x is not None and getattr(x, "size", 0) > 0
+    
 
 def latest_artifact_after(save_dir, feature_space, model_name, start_ts):
     """Find the most recently modified artifact created after a given timestamp."""

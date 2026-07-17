@@ -147,8 +147,8 @@ def ensure_checkpoints(model_name: str, bit_width: int, stages: list,
                                     bit_width=bit_width)
 
 
-def run_tsne_experiment(model_name: str, perplexity: int = 30, max_iter: int = 1000,
-                        max_train: int = 2000, max_test: int = 1000,
+def run_tsne_experiment(model_name: str, perplexity: int = 30, components: str = "2D",
+                        max_iter: int = 1000, max_train: int = 2000, max_test: int = 1000,
                         classes=None, seed: int = 42,
                         show_misclassifications: bool = False,
                         feature_space: str = "layer", feature_layers=None,
@@ -194,6 +194,7 @@ def run_tsne_experiment(model_name: str, perplexity: int = 30, max_iter: int = 1
         "tsne_multiplier_paths": tsne_multiplier_paths,
         "bit_width": bit_width,
         "perplexity": perplexity,
+        "components": components,        
         "max_iter": max_iter,
         "max_train": max_train,
         "max_test": max_test,
@@ -296,6 +297,7 @@ def run_tsne_experiment(model_name: str, perplexity: int = 30, max_iter: int = 1
                 model, train_loader, test_loader, device,
                 model_name=model_name,
                 perplexity=perplexity,
+                components=components,
                 max_iter=max_iter,
                 max_train=max_train,
                 max_test=max_test,
@@ -340,6 +342,7 @@ if __name__ == "__main__":
     parser.add_argument("--tsne-no-save-dash-artifact", action="store_false", dest="tsne_save_dash_artifact")
     parser.add_argument("--train-if-missing", action="store_true", default=False,
                         help="Automatically train missing checkpoints before running t-SNE.")
+    parser.add_argument("--tsne_components", type=str, default="2D", choices=["2D", "3D", "2D+3D"])
     parser.set_defaults(tsne_save_static=True, tsne_save_dash_artifact=True)
     args = parser.parse_args()
 
@@ -363,4 +366,5 @@ if __name__ == "__main__":
         save_static=args.tsne_save_static,
         save_dash_artifact=args.tsne_save_dash_artifact,
         train_if_missing=args.train_if_missing,
+        components=args.tsne_components
     )

@@ -250,7 +250,7 @@ def show_misclassified_images(X, y, y_pred, image_shape, save_path,
 
 
 def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
-                            model_name="lenet5", perplexity=30,
+                            model_name="lenet5", perplexity=30, components="2D",
                             max_iter=1000, max_train=2000, max_test=1000,
                             save_dir=None, classes=None, seed=42,
                             show_misclassifications=False, image_shape=None,
@@ -342,8 +342,23 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
     n_features = X_all.shape[1]
     print(f"Running t-SNE on {len(X_all)} samples "
           f"({n_train} train + {n_test} test), {n_features} features...")
-    X_2d = TSNE(
-        n_components=2,
+    
+    # check what dimensional reductions to compute and run TSNE
+    compute_2d = components in ("2D", "2D+3D")
+    compute_3d = components in ("3D", "2D+3D")
+
+    X_2d = None
+    if compute_2d:
+        X_2d = TSNE(n_components=2,
+        perplexity=perplexity,
+        n_iter=max_iter,
+        init="pca",
+        random_state=seed,
+    ).fit_transform(X_all)
+
+    X_3d = None
+    if compute_3d:
+        X_3d = TSNE(n_components=3,
         perplexity=perplexity,
         n_iter=max_iter,
         init="pca",
@@ -376,7 +391,7 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
              f"run: {run_tag_str} | layer: {layer_str}\n"
              f"red x = CNN misclassification | acc: {acc:.1%}")
              
-    if save_static:
+    if save_static and X_2d is not None:
         save_path = os.path.join(
             tsne_out_dir,
             f"tsne_{model_name}{layer_tag}{tag}{classes_tag}.png",
@@ -388,6 +403,8 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
             test_mask=test_mask,
             save_path=save_path,
         )
+    elif save_static and X_2d is None:
+        print("Skipping static PNG export  - no 2D coordinates computed for this run (components = '3D')")
     else:
         print("Skipping static t-SNE PNG export (--tsne-no-save-static).")
 
@@ -405,6 +422,7 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
         save_dash_artifact_fn(
             artifact_path,
             X_2d=X_2d,
+            X_3d=X_3d,
             y_all=y_all,
             test_mask=test_mask,
             y_test_sub=y_test_sub,
@@ -426,7 +444,7 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
     if show_misclassifications:
         if not save_static:
             print("Skipping misclassification grid because static export is disabled.")
-            return X_2d, y_all, y_pred_sub, test_mask
+            return X_2d, X_3d, y_all, y_pred_sub, test_mask
         if image_shape is None:
             raise ValueError("image_shape=(C, H, W) is required when show_misclassifications=True")
         errors_path = os.path.join(
@@ -437,4 +455,4 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
                                   image_shape=image_shape, classes=classes,
                                   save_path=errors_path)
 
-    return X_2d, y_all, y_pred_sub, test_mask
+    return X_2d, X_3d, y_all, y_pred_sub, test_mask
