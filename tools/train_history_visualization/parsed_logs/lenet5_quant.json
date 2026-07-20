@@ -1,0 +1,42 @@
+{
+  "metadata": {
+    "model_name": "lenet5",
+    "conv_type": "2",
+    "bit_width": "8",
+    "signed": "False",
+    "input": "None"
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "train_loss": 0.0066,
+      "train_acc": 99.86,
+      "test_acc": 99.22
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.0055,
+      "train_acc": 99.91,
+      "test_acc": 99.23
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.0048,
+      "train_acc": 99.91,
+      "test_acc": 99.15
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.0041,
+      "train_acc": 99.94,
+      "test_acc": 99.25
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.0038,
+      "train_acc": 99.92,
+      "test_acc": null
+    }
+  ],
+  "final_accuracy": null
+}

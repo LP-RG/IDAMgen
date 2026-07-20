@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "model_name": "lenet5",
+    "conv_type": "3",
+    "bit_width": "8",
+    "signed": "False",
+    "input": "my_table.npy"
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "train_loss": 0.0033,
+      "train_acc": 99.94,
+      "test_acc": 99.18
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.0027,
+      "train_acc": 99.96,
+      "test_acc": 99.18
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.0025,
+      "train_acc": 99.96,
+      "test_acc": null
+    }
+  ],
+  "final_accuracy": null
+}

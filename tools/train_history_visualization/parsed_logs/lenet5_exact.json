@@ -1,0 +1,132 @@
+{
+  "metadata": {
+    "model_name": "lenet5",
+    "conv_type": "1",
+    "bit_width": "8",
+    "signed": "False",
+    "input": "None"
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "train_loss": 0.2166,
+      "train_acc": 93.63,
+      "test_acc": null
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.0562,
+      "train_acc": 98.28,
+      "test_acc": null
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.0431,
+      "train_acc": 98.64,
+      "test_acc": null
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.0346,
+      "train_acc": 98.89,
+      "test_acc": null
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.0301,
+      "train_acc": 99.03,
+      "test_acc": null
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.0261,
+      "train_acc": 99.21,
+      "test_acc": null
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.0234,
+      "train_acc": 99.25,
+      "test_acc": null
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.0207,
+      "train_acc": 99.34,
+      "test_acc": null
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.0198,
+      "train_acc": 99.38,
+      "test_acc": null
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.0184,
+      "train_acc": 99.46,
+      "test_acc": null
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.0118,
+      "train_acc": 99.68,
+      "test_acc": null
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.0105,
+      "train_acc": 99.72,
+      "test_acc": null
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.0102,
+      "train_acc": 99.72,
+      "test_acc": null
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.0094,
+      "train_acc": 99.76,
+      "test_acc": null
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.0091,
+      "train_acc": 99.79,
+      "test_acc": null
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.0091,
+      "train_acc": 99.77,
+      "test_acc": null
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.0083,
+      "train_acc": 99.81,
+      "test_acc": null
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.0083,
+      "train_acc": 99.82,
+      "test_acc": null
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.0081,
+      "train_acc": 99.82,
+      "test_acc": null
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.008,
+      "train_acc": 99.81,
+      "test_acc": null
+    }
+  ],
+  "final_accuracy": 99.13
+}
