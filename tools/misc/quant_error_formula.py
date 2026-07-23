@@ -24,8 +24,9 @@ def get_prob_matrix(layer_name=None):
             raise ValueError(f"No heatmap file found for layer: {layer_name}")
         matrix = np.load(os.path.join(heat_maps_path, heat_map_file))
         matrix = matrix.sum(axis=0)
-        prob_matrix = matrix / np.sum(matrix)
-        return prob_matrix
+        total_macs = np.sum(matrix)
+        prob_matrix = matrix / total_macs
+        return prob_matrix, total_macs
     
     heat_map_files = sorted([f for f in os.listdir(heat_maps_path) if f.endswith(".npy")])
     cumulative_heatmap = None
@@ -36,24 +37,33 @@ def get_prob_matrix(layer_name=None):
             cumulative_heatmap = matrix.copy()
         else:
             cumulative_heatmap += matrix
-    prob_matrix = cumulative_heatmap / np.sum(cumulative_heatmap)
-    return prob_matrix
+            
+    total_macs = np.sum(cumulative_heatmap)
+    prob_matrix = cumulative_heatmap / total_macs
+    return prob_matrix, total_macs
 
-def generate_and_save_error_matrix(target_bit, base_bit=8, exact=False, layer_name=None):
+def generate_and_save_error_matrix(target_bit, base_bit=8, exact=False, layer_name=None, params=None):
     if target_bit >= base_bit or target_bit < 1:
         raise ValueError("target_bit must be between 1 and 7 (inclusive) for INT{base_bit} to INT{target_bit} conversion.")
         
     mode_str = "exact" if exact else "approx"
 
-    filename = f"error_matrix_int{target_bit}_{mode_str}.png"
+    if layer_name is not None:
+        filename = f"error_matrix_int{target_bit}_{mode_str}_{layer_name.replace('.', '_')}.png"
+    else:
+        filename = f"error_matrix_int{target_bit}_{mode_str}.png"
 
 
 
     vals_base = np.arange(2 ** base_bit, dtype=np.int32)
     X_base, W_base = np.meshgrid(vals_base, vals_base, indexing='ij')
 
-    zp_i_base = 0
-    zp_w_base = 0
+    if params is not None:
+        zp_i_base = -params["activation"]["zp_neg"]
+        zp_w_base = -params["weight"]["zp_neg"]
+    else:
+        zp_i_base = 0
+        zp_w_base = 0
 
 
     exact_mac = (X_base - zp_i_base) * (W_base - zp_w_base)
@@ -77,14 +87,19 @@ def generate_and_save_error_matrix(target_bit, base_bit=8, exact=False, layer_na
         approx_mac = (((X_base - zp_i_base) >> shift) * ((W_base - zp_w_base) >> shift)) << total_left_shift
     
     error_matrix = np.abs(exact_mac - approx_mac)
+
+    print(error_matrix[0,0])
     
 
-    prob_matrix = get_prob_matrix(layer_name=layer_name)
+    prob_matrix, layer_macs = get_prob_matrix(layer_name=layer_name)
     mean_ae = np.sum(error_matrix * prob_matrix)
 
     
     mode_title = "exact" if exact else "approx"
-    print(f"--- Results for INT{target_bit} ({mode_title}) ---")
+    if layer_name is not None:
+        print(f"--- Results for INT{target_bit} ({mode_title}) ({layer_name}) ---")
+    else:
+        print(f"--- Results for INT{target_bit} ({mode_title}) ---")
     print(f"Quantization max_ae on ResNet  = {np.max(error_matrix):.4f}")
     if mean_ae is not None:
         print(f"Quantization mean_ae on ResNet with {target_bit} bits = {mean_ae:.4f}\n")
@@ -97,7 +112,7 @@ def generate_and_save_error_matrix(target_bit, base_bit=8, exact=False, layer_na
     cbar = plt.colorbar()
     cbar.set_label('Absolute Error', rotation=270, labelpad=15)
     
-    plt.title(f'Error Matrix of INT{target_bit} Multiplier {mode_title}')
+    plt.title(f'Error Matrix of INT{target_bit} Multiplier {mode_title} on layer {layer_name if layer_name else "all layers"}')
     plt.xlabel(f'Weight (W{base_bit})')
     plt.ylabel(f'Activation (X{base_bit})')
     
@@ -106,6 +121,8 @@ def generate_and_save_error_matrix(target_bit, base_bit=8, exact=False, layer_na
     plt.close()
     
     print(f"Error matrix saved successfully as: {filename}\n")
+    
+    return mean_ae, layer_macs
 
 if __name__ == "__main__":
 
@@ -194,8 +211,9 @@ if __name__ == "__main__":
             "activation": {"scale": 0.015851, "zp_neg": 0.0},
             "weight": {"scale": 0.002120, "zp_neg": -113.0}
         }
-    }
-    quantization_params_resnet_8 = {
+    }    
+
+    quantization_params_resnet_8_8bit = {
         "conv1": {
             "activation": {"scale": 0.007843, "zp_neg": -127.0},
             "weight": {"scale": 0.017024, "zp_neg": -131.0}
@@ -234,11 +252,21 @@ if __name__ == "__main__":
         }
     }
 
-    # for layer_name, _ in quantization_params_resnet_8.items():
-    #     generate_and_save_error_matrix(target_bit=7, exact=True, layer_name=layer_name)
+    global_ae_sum = 0.0
+    global_macs_sum = 0.0
 
-    for tb in range(1, 8):
-        generate_and_save_error_matrix(target_bit=tb, exact=True)
+    for layer_name, params in quantization_params_resnet_8_8bit.items():
+        layer_mean_ae, layer_macs = generate_and_save_error_matrix(target_bit=5, exact=True, layer_name=layer_name, params=params)
+        
+        global_ae_sum += layer_mean_ae * layer_macs
+        global_macs_sum += layer_macs
+
+    global_mean_ae = global_ae_sum / global_macs_sum
+    print(f"==================================================")
+    print(f"Quantization GLOBAL mean_ae = {global_mean_ae:.4f}")
+    print(f"==================================================")
+
+    # for tb in range(1, 8):
+    #     generate_and_save_error_matrix(target_bit=tb, exact=True)
 
     #generate_and_save_error_matrix(target_bit=7, exact=True)
-    
