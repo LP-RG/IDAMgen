@@ -4,13 +4,18 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import seaborn as sns
 import torch
+import tsne_sweep
+import tsne_sweep_figures
 from sklearn.manifold import TSNE
 from tsne_utils import (
     build_classes_tag,
     build_dash_artifact_path,
+    build_dash_artifact_basename,
     build_layer_tag,
     build_tag,
-    save_dash_artifact as save_dash_artifact_fn,
+    save_dash_artifact,
+    save_sweep_step_artifact,
+    save_sweep_manifest
 )
 
 
@@ -417,9 +422,9 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
             feature_layer_path=feature_layer_path,
             output_tag=output_tag,
             classes=classes,
-            run_id=run_id,
+            run_id=run_id
         )
-        save_dash_artifact_fn(
+        save_dash_artifact(
             artifact_path,
             X_2d=X_2d,
             X_3d=X_3d,
@@ -435,7 +440,7 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
             feature_layer_requested=feature_layer_requested,
             output_tag=output_tag,
             classes=classes,
-            title=title,
+            title=title
         )
         print(f"Dash artifact saved to {artifact_path}")
     else:
@@ -456,3 +461,101 @@ def run_tsne_cnn_experiment(model, train_loader, test_loader, device,
                                   save_path=errors_path)
 
     return X_2d, X_3d, y_all, y_pred_sub, test_mask
+
+
+def run_tsne_sweep_cnn_experiment(model, train_loader, test_loader, device, train_schedule,
+                            model_name="lenet5", perplexity=30, components="2D",
+                            max_iter=1000, test_size=1000,
+                            save_dir=None, seed=42, image_shape=None,
+                            feature_layer_path=None,
+                            feature_layer_requested=None,
+                            save_artifact=True, 
+                            run_id=None, run_dir=None, n_repeats=5):
+
+    rng = np.random.default_rng(seed)
+    N_max = max(train_schedule)
+
+    train_loader, train_indices = _subsample_loader(train_loader, N_max, rng)
+    n_pool = len(train_loader.dataset)
+    test_loader, test_indices = _subsample_loader(test_loader, test_size, rng)
+    
+    feature_pool, y_train_pool = _collect_layer_features(
+        model, train_loader, device, layer_path=feature_layer_path
+    )
+    
+    test_features, y_test_sub, y_pred_sub = _collect_layer_features(
+        model, test_loader, device, layer_path=feature_layer_path, collect_preds=True
+    )
+
+    X_test_pixels, y_test_pixels = _collect_inputs(test_loader)
+    if not np.array_equal(y_test_pixels, y_test_sub):
+        raise RuntimeError(
+            "Mismatch between pixel-label order and layer-label order while "
+            "preparing sweep dash artifacts."
+        )
+
+    step_results = tsne_sweep.run_tsne_sweep(
+        train_schedule, test_features, feature_pool, 
+        seed, components, perplexity, max_iter, n_repeats
+    )
+
+    manifest_rows = []
+    for step in step_results:
+        n_train_step = step["n_train"]
+        n_total_step = step["n_total"]
+        
+        y_all = np.concatenate([y_train_pool[:n_train_step], y_test_sub])
+        test_mask = np.zeros(n_total_step, dtype=bool)
+        test_mask[n_train_step:] = True
+        
+        output_tag = f"sweep_n{n_total_step}"
+        artifact_path = None
+
+        if save_artifact:
+            basename = build_dash_artifact_basename(
+                model_name=model_name, feature_space="layer",
+                feature_layer_path=feature_layer_path, output_tag=output_tag, classes=None
+            )
+            artifact_path = os.path.join(save_dir, "layer", model_name, "sweep", run_id, "dash_data", f"{basename}.npz")
+            save_sweep_step_artifact(
+                sweep_path=artifact_path,
+                n_train=n_train_step,
+                n_total=n_total_step,
+                X_2d=step.get("X_2d"),
+                X_3d=step.get("X_3d"),
+                kl_div_2d=step.get("kl_divergence_2d"),
+                kl_div_3d=step.get("kl_divergence_3d"),
+                median_2d=step.get("median_2d"),
+                median_3d=step.get("median_3d"),
+                y_all=y_all,
+                test_mask=test_mask
+            )
+            print(f"Dash artifact saved to {artifact_path}")
+        else:
+            print("Skipping Dash artifact export (--tsne-no-save-dash-artifact).")
+
+        manifest_rows.append({
+            "n_train": n_train_step,
+            "n_total": n_total_step,
+            "kl_divergence_2d": step.get("kl_divergence_2d"),
+            "kl_divergence_3d": step.get("kl_divergence_3d"),
+            "median_2d": step.get("median_2d"),
+            "median_3d": step.get("median_3d"),
+            "y_all": y_all,
+            "test_mask": test_mask,
+            "artifact_path": artifact_path,
+        })
+
+    fig = tsne_sweep_figures.build_kld_sweep_figure(manifest_rows)
+
+    curve_path_html = os.path.join(run_dir, "kld_sweep_curve.html")
+    fig.write_html(curve_path_html)
+    
+    curve_path_png = os.path.join(run_dir, "kld_sweep_curve.png")
+    try:
+        fig.write_image(curve_path_png)
+    except Exception as e:
+        print(f"Skipping PNG export: {e}")
+
+    save_sweep_manifest(run_dir, manifest_rows)
+    return run_dir, manifest_rows

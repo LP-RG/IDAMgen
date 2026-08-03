@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import argparse
@@ -8,7 +10,6 @@ import json
 import tsne_visualization as tsne_vis
 import sys
 
-
 CURR_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(CURR_DIR))
 SRC_PATH = os.path.join(ROOT_DIR, "src")
@@ -18,12 +19,13 @@ if SRC_PATH not in sys.path:
 
 import modules.data_loaders as data_loader
 import modules.convolution as cc
+from cnn_training import new_training_method
 from modules.common import (
     trained_models_path, device,
     normalize_model_name, MODEL_IMAGE_SHAPES, build_model, setup_seed,
     train_loader, test_loader, _classes,
 )
-from cnn_training import new_training_method
+
 
 def calibration(model, stats=False):
     """Calibrates model activations/weights using the training set."""
@@ -36,6 +38,7 @@ def calibration(model, stats=False):
         inputs = inputs.to(device)
         model(inputs)
 
+
 def set_data_loaders(model_name: str, batch_size: int = 64):
     """Sets appropriate batch sizes based on the model architecture and loads data."""
     global train_loader, test_loader, _classes
@@ -47,7 +50,6 @@ def set_data_loaders(model_name: str, batch_size: int = 64):
         batch_size = 128
 
     train_loader, test_loader, _classes = data_loader.get_datasets(batch_size, model_name)
-
 
 
 def resolve_tsne_layer_path(model: nn.Module, requested_layer: str) -> str:
@@ -316,6 +318,68 @@ def run_tsne_experiment(model_name: str, perplexity: int = 30, components: str =
             )
 
 
+def run_tsne_sweep_experiment(model_name: str, train_schedule: list[int], test_size: int = 1000,
+                            perplexity: int = 30, components: str = "2D", max_iter: int = 1000, 
+                            seed: int = 42, feature_layer: str = "penultimate", bit_width: int = 8,
+                            save_artifact: bool = False, train_if_missing: bool = False, n_repeats: int = 5):
+    model_name = normalize_model_name(model_name)
+    num_classes = _classes if _classes else 10
+
+    exact_path = os.path.join(trained_models_path, f"{model_name}.pth")
+
+    if train_if_missing:
+        ensure_checkpoints(model_name, bit_width, ["exact"])
+    image_shape = MODEL_IMAGE_SHAPES.get(model_name.lower())
+
+    if not os.path.exists(exact_path):
+        raise FileNotFoundError(
+            f"No exact checkpoint at '{exact_path}'. "
+            f"Train first with --model_name {model_name} --conv_type 1."    
+        )
+    model = build_model(model_name, conv_type=1, bit_width=bit_width,
+                        signed=False, zone=False, multiplier_matrix=None,
+                        num_classes=num_classes)
+    model.load_state_dict(torch.load(exact_path, weights_only=True))
+    model.to(device)
+
+    feature_layer_path = resolve_tsne_layer_path(model, feature_layer)
+    print(f"Layer alias '{feature_layer}' resolved to '{feature_layer_path}'.")
+
+    # Set up output directory
+    save_dir = os.path.join(CURR_DIR, "plots")
+    run_id = f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    run_dir = os.path.join(save_dir, "layer", model_name, "sweep", run_id)
+    os.makedirs(run_dir, exist_ok=True)
+
+    metadata = {
+        "model_name": model_name,
+        "feature_space": "layer",
+        "feature_layer": feature_layer,
+        "feature_layer_path": feature_layer_path,
+        "stages": "exact",
+        "bit_width": bit_width,
+        "perplexity": perplexity,
+        "components": components,        
+        "max_iter": max_iter,
+        "train_schedule": train_schedule,
+        "test_size": test_size,
+        "seed": seed,
+        "run_id": run_id,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }    
+    with open(os.path.join(run_dir, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    tsne_vis.run_tsne_sweep_cnn_experiment(model, train_loader, test_loader, device, train_schedule,
+        model_name=model_name, perplexity=perplexity, components=components,
+        max_iter=max_iter, test_size=test_size,
+        save_dir=save_dir, seed=seed, image_shape=image_shape,
+        feature_layer_path=feature_layer_path,
+        feature_layer_requested=feature_layer,
+        save_artifact=save_artifact,
+        run_id=run_id, run_dir=run_dir, n_repeats=n_repeats)
+
+
 # ------------------------------------------------------------------ #
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="t-SNE visualisation of CNN feature spaces.")
@@ -342,29 +406,57 @@ if __name__ == "__main__":
     parser.add_argument("--tsne-no-save-dash-artifact", action="store_false", dest="tsne_save_dash_artifact")
     parser.add_argument("--train-if-missing", action="store_true", default=False,
                         help="Automatically train missing checkpoints before running t-SNE.")
-    parser.add_argument("--tsne_components", type=str, default="2D", choices=["2D", "3D", "2D+3D"])
+    parser.add_argument("--tsne_components", type=str, default="2D", choices=["2D", "3D", "2D+3D"])    
+    
+    sweep_group = parser.add_argument_group("Sweep (exploratory)")
+    sweep_group.add_argument("--tsne_sweep", action="store_true")
+    sweep_group.add_argument("--tsne_sweep_train_sizes", type=int, nargs="+")
+    sweep_group.add_argument("--tsne_sweep_test_size", type=int, default=1000)
+    sweep_group.add_argument("--tsne_sweep_save_dash_artifact", action="store_true")
+    sweep_group.add_argument("--tsne_sweep_feature_layer", type=str, default="penultimate", 
+                        help="Layer alias/path(s): penultimate, logits, conv1, conv2, block1, block2, "
+                             "or explicit module paths like layer2.0")
+    sweep_group.add_argument("--tsne_sweep_n_repeats", type=int, default=5)
+
     parser.set_defaults(tsne_save_static=True, tsne_save_dash_artifact=True)
     args = parser.parse_args()
 
     setup_seed(args.tsne_seed)
     set_data_loaders(args.model_name)
 
-    run_tsne_experiment(
-        args.model_name,
-        perplexity=args.tsne_perplexity,
-        max_iter=args.tsne_max_iter,
-        max_train=args.tsne_max_train,
-        max_test=args.tsne_max_test,
-        classes=args.tsne_classes,
-        seed=args.tsne_seed,
-        show_misclassifications=args.show_misclassifications,
-        feature_space=args.tsne_feature_space,
-        feature_layers=args.tsne_feature_layer,
-        stages=args.tsne_stages,
-        tsne_multiplier_paths=args.tsne_multiplier_path,
-        bit_width=args.bit_width,
-        save_static=args.tsne_save_static,
-        save_dash_artifact=args.tsne_save_dash_artifact,
-        train_if_missing=args.train_if_missing,
-        components=args.tsne_components
-    )
+    if args.tsne_sweep:
+        run_tsne_sweep_experiment(
+            args.model_name,
+            train_schedule=args.tsne_sweep_train_sizes,
+            test_size=args.tsne_sweep_test_size,
+            perplexity=args.tsne_perplexity,
+            components=args.tsne_components,
+            max_iter=args.tsne_max_iter,
+            seed=args.tsne_seed,
+            feature_layer=args.tsne_sweep_feature_layer,
+            bit_width=args.bit_width,
+            save_artifact=args.tsne_sweep_save_dash_artifact,
+            train_if_missing=args.train_if_missing,
+            n_repeats=args.tsne_sweep_n_repeats
+        )
+
+    else:
+        run_tsne_experiment(
+            args.model_name,
+            perplexity=args.tsne_perplexity,
+            max_iter=args.tsne_max_iter,
+            max_train=args.tsne_max_train,
+            max_test=args.tsne_max_test,
+            classes=args.tsne_classes,
+            seed=args.tsne_seed,
+            show_misclassifications=args.show_misclassifications,
+            feature_space=args.tsne_feature_space,
+            feature_layers=args.tsne_feature_layer,
+            stages=args.tsne_stages,
+            tsne_multiplier_paths=args.tsne_multiplier_path,
+            bit_width=args.bit_width,
+            save_static=args.tsne_save_static,
+            save_dash_artifact=args.tsne_save_dash_artifact,
+            train_if_missing=args.train_if_missing,
+            components=args.tsne_components   
+        )

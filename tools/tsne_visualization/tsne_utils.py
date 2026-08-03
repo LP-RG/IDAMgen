@@ -1,7 +1,7 @@
 import os
-from pathlib import Path
-
 import numpy as np
+import json
+from pathlib import Path
 
 
 def safe_layer_name(layer_path):
@@ -109,7 +109,7 @@ def save_dash_artifact(artifact_path, X_2d, X_3d, y_all, test_mask, y_test_sub,
         ),
         output_tag=np.array(output_tag if output_tag is not None else ""),
         classes=np.asarray(classes if classes is not None else [], dtype=np.int64),
-        title=np.array(title),
+        title=np.array(title)
     )
 
 
@@ -139,8 +139,72 @@ def load_dash_artifact(path):
         "feature_layer_path": str(data["feature_layer_path"].item()) if "feature_layer_path" in data else "",
         "feature_layer_requested": str(data["feature_layer_requested"].item()) if "feature_layer_requested" in data else "",
         "output_tag": str(data["output_tag"].item()) if "output_tag" in data else "",
-        "title": str(data["title"].item()) if "title" in data else "t-SNE",
+        "title": str(data["title"].item()) if "title" in data else "t-SNE"
     }
+
+
+def save_sweep_step_artifact(sweep_path, n_train, n_total, X_2d, X_3d, kl_div_2d,
+                            kl_div_3d, median_2d, median_3d, y_all, test_mask):
+    """Save one sweep step's coordinates and full per repeat KL lists to .npz file.
+       Heavy and optional computation - gated by save_dash_artifact."""
+    os.makedirs(os.path.dirname(sweep_path) or ".", exist_ok=True)
+    np.savez_compressed(
+        sweep_path,
+        n_train=np.array(n_train),
+        n_total=np.array(n_total),
+        X_2d=np.asarray(X_2d if X_2d is not None else []),
+        X_3d=np.asarray(X_3d if X_3d is not None else []),
+        kl_div_2d=np.asarray(kl_div_2d if kl_div_2d is not None else []),
+        kl_div_3d=np.asarray(kl_div_3d if kl_div_3d is not None else []),
+        median_2d=np.array(median_2d),
+        median_3d=np.array(median_3d),
+        y_all=np.asarray(y_all if y_all is not None else []),
+        test_mask=np.asarray(test_mask if test_mask is not None else [])
+    )
+
+
+def load_sweep_step_artifact(path):
+    """Load one step's .npz back into a dict."""
+    data = np.load(path, allow_pickle=False)
+    return {
+        "path": str(path),
+        "n_train": data["n_train"].item(),
+        "n_total": data["n_total"].item(),
+        "X_2d": data["X_2d"] if "X_2d" in data else np.array([]),
+        "X_3d": data["X_3d"] if "X_3d" in data else np.array([]),
+        "kl_div_2d": data["kl_div_2d"].tolist() if data["kl_div_2d"].size > 0 else None,
+        "kl_div_3d": data["kl_div_3d"].tolist() if data["kl_div_3d"].size > 0 else None,
+        "median_2d": data["median_2d"].item(),
+        "median_3d": data["median_3d"].item(),
+        "y_all": data["y_all"].tolist() if data["y_all"].size > 0 else None,
+        "test_mask": data["test_mask"].tolist() if data["test_mask"].size > 0 else None
+    }
+
+
+def save_sweep_manifest(run_dir, rows):
+    """Write the whole sweep's lightweight JSON index, with one entry per step. 
+       Always written - feeds teh KL sweep graph"""
+    manifest_path = Path(run_dir) / "sweep_manifest.json"
+    steps = []
+    for row in rows:
+        steps.append({
+            "n_train": row["n_train"],
+            "n_total": row["n_total"],
+            "kl_div_2d": [float(v) for v in row["kl_divergence_2d"]] if row.get("kl_divergence_2d") else None,
+            "kl_div_3d": [float(v) for v in row["kl_divergence_3d"]] if row.get("kl_divergence_3d") else None,
+            "median_kl_2d": float(row["median_2d"]) if row.get("median_2d") is not None else None,
+            "median_kl_3d": float(row["median_3d"]) if row.get("median_3d") is not None else None,
+            "artifact_path": row.get("artifact_path"),
+        })
+    with open(manifest_path, "w") as f:
+        json.dump({"steps": steps}, f, indent=2)
+    return manifest_path
+
+
+def load_sweep_manifest(path):
+    """Load a sweep's JSON index back into its list of per-step dicts."""
+    with open(path, "r") as f:
+        return json.load(f)["steps"]
 
 
 # respectively returns whether specified dimensionality was computed
