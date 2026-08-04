@@ -42,7 +42,7 @@ def create_matrices(multipliers_folder, bitwidth, output_plot_path):
         raise NotADirectoryError(f"Folder not found: '{multipliers_folder}'")
     os.makedirs(output_plot_path, exist_ok=True)
     results = []
-    for filename in sorted(os.listdir(output_plot_path)):
+    for filename in sorted(os.listdir(multipliers_folder)):
         if not filename.endswith(".v"):
             continue
         npy_path = os.path.join(output_plot_path, filename.split(".")[0])
