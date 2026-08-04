@@ -86,7 +86,7 @@ def build_kld_sweep_figure(rows, reference_n=3000, width_frac=0.15, offset_frac=
         boxmode="overlay",
         legend=dict(x=0.99, y=0.99, xanchor="right", yanchor="top"),
         margin=dict(l=10, r=10, t=50, b=10),
-        height=700,
+        height=750,
         autosize=True
     )
     return fig
@@ -140,6 +140,6 @@ def build_step_scatter_figure(coords, y, test_mask=None, title=None):
                 mode="markers", name=str(lab), marker=marker))
 
     fig.update_layout(title=title, legend_title_text="class",
-                       margin=dict(l=20, r=20, t=40, b=20))
+                       margin=dict(l=20, r=20, t=40, b=20), height=700)
     return fig
         

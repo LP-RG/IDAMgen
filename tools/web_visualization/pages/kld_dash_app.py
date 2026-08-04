@@ -88,10 +88,10 @@ layout = html.Div(
         ),
         # SCATTERS SECTION
         html.Div(
-            style={"flex": 1, "display": "flex", "flexDirection": "column", "gap": "8px", "backgroundColor": "white", "padding": "12px", "borderRadius": "8px", "boxShadow": "0 2px 4px rgba(0,0,0,0.1)", "minWidth": 0},
+            style={"display": "flex", "flexDirection": "column", "gap": "8px", "backgroundColor": "white", "padding": "12px", "borderRadius": "8px", "boxShadow": "0 2px 4px rgba(0,0,0,0.1)", "minWidth": 0},
             children=[
                 html.Div(
-                    style={"flex": 1, "display": "flex", "flexDirection": "row", "gap": "8px", "width":"50%"},
+                    style={"display": "flex", "flexDirection": "row", "gap": "8px", "width":"65%"},
                     children=[
                         html.Label("Step:", style={"fontWeight": "bold", "minWidth": "50px"}),
                         html.Div(
