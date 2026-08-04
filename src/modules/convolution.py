@@ -5,8 +5,7 @@ from torch import nn
 import modules.functions as functions
 import modules.quantization as quantization
 
-from mqbench.observer import MSEObserver,EMAMSEObserver,MinMaxObserver
-
+from mqbench import observer 
 # Conv Type list:
 # - 1 : standard convolution
 # - 2 : quantized convolution no error
@@ -40,8 +39,18 @@ class Conv2d_custom(nn.Conv2d):
 
         self.signed = signed
         quant_scale = f"torch.q{'u' if not signed else ''}int{bit_width}"
-        self.activation_observer = EMAMSEObserver(dtype=eval(quant_scale), qscheme= torch.per_tensor_affine)
-        self.weight_observer = MSEObserver(dtype=eval(quant_scale), qscheme= torch.per_tensor_affine)
+        self.activation_observer = self.activation_observer = observer.EMAMSEObserver(
+                                            dtype=torch.quint8,
+                                            qscheme=torch.per_tensor_affine,
+                                            quant_min=0,
+                                            quant_max=127,   # 2^6 - 1, per uint6
+                                        )
+        self.weight_observer = observer.MSEObserver(
+                                            dtype=torch.quint8,
+                                            qscheme=torch.per_tensor_affine,
+                                            quant_min=0,
+                                            quant_max=127,   # 2^6 - 1, per uint6
+                                        )
         self.bit_width = bit_width
         self.multiplier_matrix = multiplier_matrix
         self.calibrating = False
@@ -64,14 +73,11 @@ class Conv2d_custom(nn.Conv2d):
     def freeze_qparams(self):
         act_scale, act_zp = self.activation_observer.calculate_qparams()
         w_scale, w_zp = self.weight_observer.calculate_qparams()
-        print(act_zp.squeeze())
         self.activation_scale.copy_(act_scale.squeeze())
         self.activation_zp_neg.copy_(-act_zp.squeeze())
         print(self.activation_zp_neg)
         self.weight_scale.copy_(w_scale.squeeze())
-        print(w_zp.squeeze())
         self.weight_zp_neg.copy_(-w_zp.squeeze())
-        print(self.weight_zp_neg)
         self.max_val_weight.copy_(self.weight_observer.max_val)
         self.min_val_weight.copy_(self.weight_observer.min_val)
         self.max_val_act.copy_(self.activation_observer.max_val)
