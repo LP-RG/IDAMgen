@@ -8,6 +8,19 @@ from vpadanalyzer.synthesis import Synthesis
 CSV_HEADER = "file,area,power,delay,pda,mean_ae,mean_ae_cnn,max_ae,accuracy\n"
 CSV_FILE = "results.csv"
 
+PATH_TO_LOCAL_OPEN_STA = '/mnt/hdd/alessio/OpenSTA/build/sta'
+
+
+def patch_opensta_path(path: str):
+    if(os.path.isfile(path)):
+        import vpadanalyzer.paths
+        vpadanalyzer.paths.OPENSTA = path   
+        import vpadanalyzer.synthesis
+        vpadanalyzer.synthesis.OPENSTA = path
+    
+    
+
+
 try:
     import tools.synthesis_npy_generation.sub_xpat_circuits_generator as sub_xpat_circuits_generator
     import tools.synthesis_npy_generation.sub_x_pat_simulator as sub_x_pat_simulator
@@ -65,8 +78,9 @@ def generate_npy_for_single_file(input_verilog, bitwidth, output_npy_path, exper
             "pda": pda, "mean_ae": mean_ae, "mean_ae_cnn": mean_ae_cnn, "max_ae": max_error
         }
 
-        found_accuracy = find_matching_stats(current_metrics)
-        
+        # found_accuracy = find_matching_stats(current_metrics)
+        found_accuracy = None
+
         file_exists = os.path.exists(CSV_FILE)
         with open(CSV_FILE, "a") as f:
             if not file_exists:
@@ -86,6 +100,7 @@ def generate_npy_for_single_file(input_verilog, bitwidth, output_npy_path, exper
             os.remove("sub_x_pat_multiplier.py")
 
 if __name__ == "__main__":
+    patch_opensta_path(PATH_TO_LOCAL_OPEN_STA)
     parser = argparse.ArgumentParser()
     parser.add_argument("input_verilog")
     parser.add_argument("bitwidth", type=int)

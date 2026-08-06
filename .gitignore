@@ -173,6 +173,10 @@ multipliers/
 # Ignore VS Code settings
 .vscode/
 
+experiments/
+sub_x_pat_multiplier.py
+results.csv
+
 # Generated plots (reproducible by re-running --tsne)
 plots/
 
