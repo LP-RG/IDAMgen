@@ -10,6 +10,8 @@ import time
 import mat_mul
 import modules.data_loaders as data_loader
 
+import modules.convolution as conv
+
 from datetime import datetime
 
 import json
@@ -21,6 +23,9 @@ from modules.common import (
     setup_seed, clean_gpu,
     train_loader, test_loader, _classes,
 )
+import numpy as np
+import sys
+import mqbench
 
 def _debug_print(message: str):
     print(f"[DEBUG] {message}", flush=True)
@@ -36,17 +41,31 @@ def _describe_multiplier_input(multiplier_matrix: str | list[str]):
 def calibration(model, stats=False):
     """Calibrates model activations/weights using the training set."""
     print("Calibrating model...")
+
+    for m in model.modules():
+        if isinstance(m, conv.Conv2d_custom):
+            m.calibrating = True
+
     if stats:
         model.eval()
     else:
         model.train()
-    for inputs, _ in train_loader:
-        inputs = inputs.to(device)
-        model(inputs)
 
-def set_data_loaders(model_name: str, batch_size: int = 64):
+    with torch.no_grad():
+        for i, (inputs, _) in enumerate(train_loader):
+            if i >= 2048 // batch_size:
+                break
+            inputs = inputs.to(device)
+            model(inputs)
+
+    for m in model.modules():
+        if isinstance(m, conv.Conv2d_custom):
+            m.freeze_qparams()
+
+
+def set_data_loaders(model_name: str):
     """Sets appropriate batch sizes based on the model architecture and loads data."""
-    global train_loader, test_loader, _classes
+    global train_loader, test_loader, _classes, batch_size
     name = model_name.lower()
 
     if name in ("lenet5", "resnet", "resnet8"):

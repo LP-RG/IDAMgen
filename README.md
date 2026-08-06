@@ -1,5 +1,4 @@
-# CNN_At — Approximate Computing CNN Framework
-
+# Multi-Constrained Input-Distribution-Aware Approximate Multiplier Generation for CNNs
 A research framework for training, quantizing, and evaluating CNN models on
 approximate-hardware multipliers, with built-in t-SNE visualization of
 misclassification patterns across exact, quantized, and approximate stages,
@@ -25,7 +24,7 @@ Prerequisites not handled by `make setup`:
 |---|---|
 | CUDA toolkit matching your driver | building `src/extension_cpp` (`mat_mul`) |
 | Yosys + OpenSTA on `PATH` (or set the path in `tools/synthesis_npy_generation/circuits_analizer.py`) | circuit synthesis via `vpadanalyzer` |
-| [SubXPAT](https://github.com/) checked out at `subxpat/` (repo root) | `tools/orchestrator/orchestrator.py` only |
+| [SubXPAT](https://github.com/LP-RG/subxpat/tree/114-new-zone-constraint-with-re-metric) checked out at `<repo_root>/subxpat/` on branch `114-new-zone-constraint-with-re-metric` | `tools/orchestrator/orchestrator.py` only |
 
 ## Quick Start
 

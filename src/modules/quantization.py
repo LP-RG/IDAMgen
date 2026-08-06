@@ -7,7 +7,8 @@ def signed_quantization(x, s, qmax):
         x_int = torch.clamp(torch.round(x_affine),min = qmin, max = qmax)
         return x_int
 
-def unsigned_quantization(x, s, zpn, qmax):
+def unsigned_quantization(x, s, zpn, qmin, qmax):
+        torch.clamp(x, qmin, qmax)
         x_affine = x / s - zpn
-        x_int = torch.clamp(torch.round(x_affine), 0, qmax)
+        x_int = (torch.round(x_affine))
         return x_int
