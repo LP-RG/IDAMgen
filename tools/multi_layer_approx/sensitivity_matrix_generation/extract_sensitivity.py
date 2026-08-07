@@ -8,6 +8,7 @@ import time
 import argparse
 import glob
 import json
+import mat_mul
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SRC_DIR = os.path.join(ROOT_DIR, "src")
@@ -21,11 +22,11 @@ if SRC_DIR not in sys.path:
 import src.models.resnet8 as resnet8
 import src.modules.data_loaders as data_loader
 
-from src.cnn_training import calibration
-
 
 trained_models_path = os.path.join(ROOT_DIR, "trained_models/")
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+BATCH_SIZE = 64
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -33,36 +34,29 @@ def setup_seed(seed):
     np.random.seed(seed)
     torch.backends.cudnn.deterministic = True
 
-def evaluate_forward_only(model, train_loader, criterion):
-    """Do a single forward pass on a frozen batch to extract the loss."""
+def evaluate_forward_only(model, train_loader, criterion, num_batches=None):
+    """Do forward passes over `num_batches` batches (or the whole loader if None) and return the last loss."""
 
     model.eval()
     with torch.no_grad():
         for batch, (inputs, targets) in enumerate(train_loader):
+            if num_batches is not None and batch >= num_batches:
+                break
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
     return loss.item()
 
-def get_calibration_loader(model_name="resnet8", calib_batch_size=64, calib_samples=1024):
-    """Build a fixed calibration loader: calib_samples total samples, calib_batch_size per batch."""
-    print(f"Extracting Calibration Set ({calib_samples} samples, batch_size={calib_batch_size})...")
-    calib_loader, _, _ = data_loader.get_datasets(calib_batch_size, model_name)
-    num_batches = calib_samples // calib_batch_size
+def get_calibration_loader(model_name="resnet8", calib_samples=1024):
+    """Build a fixed calibration loader: calib_samples total samples, fixed batch_size=64."""
+    print(f"Extracting Calibration Set ({calib_samples} samples, batch_size={BATCH_SIZE})...")
+    calib_loader, _, _ = data_loader.get_datasets(BATCH_SIZE, model_name)
+    num_batches = calib_samples // BATCH_SIZE
     return calib_loader, num_batches
 
-def get_training_loader(batch_size, model_name="resnet8"):
-    """Build the loader used for the forward-only loss evaluation.
-    If batch_size is None, the entire training set is used as a single batch."""
-    if batch_size is not None:
-        print(f"Building training data loader (batch_size={batch_size})...")
-        train_loader, _, _ = data_loader.get_datasets(batch_size, model_name)
-        return train_loader
-
-    print("No --batch_size specified: using the entire training set as a single batch.")
-    probe_loader, _, _ = data_loader.get_datasets(1, model_name)
-    full_size = len(probe_loader.dataset)
-    train_loader, _, _ = data_loader.get_datasets(full_size, model_name)
+def get_training_loader(model_name="resnet8"):
+    """Build the loader used for the forward-only loss evaluation, fixed batch_size=64."""
+    train_loader, _, _ = data_loader.get_datasets(BATCH_SIZE, model_name)
     return train_loader
 
 def calibration(model, calib_loader, num_batches, stats=False):
@@ -91,7 +85,7 @@ def main():
     parser.add_argument("--3_2_approx", type=str, default=None, help="Path to folder with .npy files for Layer 7")
 
     
-    parser.add_argument("--batch_size", type=int, default=None, help="Size of the batches used for forward-only evaluation. If omitted, the whole training set is used as a single batch.")
+    parser.add_argument("--batch_number", type=int, default=None, help="Number of batches (fixed batch_size=64) to see before returning the loss. If omitted, iterates over the whole training set.")
     parser.add_argument("--quant_model_path", type=str, default=os.path.join(ROOT_DIR, "trained_models/resnet8_q8.pth"), help="Path to the quantized model")
     args = parser.parse_args()
     
@@ -138,8 +132,8 @@ def main():
                 return idx
         return -1
 
-    calib_loader, calib_num_batches = get_calibration_loader(model_name="resnet8", calib_batch_size=64, calib_samples=1024)
-    train_loader = get_training_loader(args.batch_size, "resnet8")
+    calib_loader, calib_num_batches = get_calibration_loader(model_name="resnet8", calib_samples=1024)
+    train_loader = get_training_loader("resnet8")
     criterion = nn.CrossEntropyLoss()
     quant_state_dict = torch.load(args.quant_model_path, weights_only=True)
 
@@ -160,7 +154,7 @@ def main():
 
         calibration(model, calib_loader, calib_num_batches)
 
-        return evaluate_forward_only(model, train_loader, criterion)
+        return evaluate_forward_only(model, train_loader, criterion, num_batches=args.batch_number)
 
     print("Calcolo Loss Baseline (Quantized)...")
     baseline_loss = instantiate_and_eval(None)
