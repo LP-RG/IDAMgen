@@ -18,10 +18,9 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
-
 import src.models.resnet8 as resnet8
 import src.modules.data_loaders as data_loader
-
+import src.modules.convolution as conv
 
 trained_models_path = os.path.join(ROOT_DIR, "trained_models/")
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -35,43 +34,62 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 def evaluate_forward_only(model, train_loader, criterion, num_batches=None):
-    """Do forward passes over `num_batches` batches (or the whole loader if None) and return the last loss."""
-
+    debug_batch_idx = 4
+    total_loss = 0.0
+    n_batches = 0
     model.eval()
     with torch.no_grad():
         for batch, (inputs, targets) in enumerate(train_loader):
             if num_batches is not None and batch >= num_batches:
                 break
+
+            if batch == debug_batch_idx:
+                # DEBUG PRINT JUST TO BE SURE THAT THE IPUTS ARE ALLWAYS THE SAME
+                pixel_sums = inputs.view(inputs.size(0), -1).sum(dim=1)
+                print(f"[DEBUG] Batch {batch} | somma pixel per immagine: "
+                      f"{[f'{v:.4f}' for v in pixel_sums.tolist()]}")
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
-    return loss.item()
+            total_loss += loss.item()
+            n_batches += 1
+    return total_loss / n_batches
 
-def get_calibration_loader(model_name="resnet8", calib_samples=1024):
-    """Build a fixed calibration loader: calib_samples total samples, fixed batch_size=64."""
-    print(f"Extracting Calibration Set ({calib_samples} samples, batch_size={BATCH_SIZE})...")
-    calib_loader, _, _ = data_loader.get_datasets(BATCH_SIZE, model_name)
-    num_batches = calib_samples // BATCH_SIZE
-    return calib_loader, num_batches
 
-def get_training_loader(model_name="resnet8"):
-    """Build the loader used for the forward-only loss evaluation, fixed batch_size=64."""
-    train_loader, _, _ = data_loader.get_datasets(BATCH_SIZE, model_name)
-    return train_loader
+def pre_training(model, train_loader, criterion, optimizer, epoch=5):
+    model.train()
+    for _ in range(epoch):
+        for batch, (inputs, targets) in enumerate(train_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)            
+            loss.backward()
 
-def calibration(model, calib_loader, num_batches, stats=False):
-    """Do forward passes over `num_batches` batches for calibration."""
-    print("Calibrating model for activation scales...")
-    if stats:
-        model.eval()
-    else:
-        model.train()
 
-    for i, (inputs, _) in enumerate(calib_loader):
-        if i >= num_batches:
-            break
-        inputs = inputs.to(device)
-        model(inputs)
+def set_data_loaders(model_name: str):
+    """Sets appropriate batch sizes based on the model architecture and loads data."""
+    global train_loader, test_loader, _classes, batch_size
+    train_loader, test_loader, _classes = data_loader.get_datasets(BATCH_SIZE, model_name)
+
+
+def calibration(model):
+    """Calibrates model activations/weights using the training set."""
+    print("Calibrating model...")
+
+    for m in model.modules():
+        if isinstance(m, conv.Conv2d_custom):
+            m.calibrating = True
+
+    with torch.no_grad():
+        for i, (inputs, _) in enumerate(train_loader):
+            if i >= 1024 // BATCH_SIZE:
+                break
+            inputs = inputs.to(device)
+            model(inputs)
+
+    for m in model.modules():
+        if isinstance(m, conv.Conv2d_custom):
+            m.freeze_qparams()
 
 def main():
     parser = argparse.ArgumentParser(description="Extract sensitivity matrix for ResNet8 using forward pass.")
@@ -84,7 +102,8 @@ def main():
     parser.add_argument("--3_1_approx", type=str, default=None, help="Path to folder with .npy files for Layer 6")
     parser.add_argument("--3_2_approx", type=str, default=None, help="Path to folder with .npy files for Layer 7")
 
-    
+    parser.add_argument("--full_test", action="store_true", help="If set, evaluate on the full test set.")
+    parser.add_argument("--pre_training", action="store_true", help="If set, train the model with pre_training before evaluating on the test set.")
     parser.add_argument("--batch_number", type=int, default=None, help="Number of batches (fixed batch_size=64) to see before returning the loss. If omitted, iterates over the whole training set.")
     parser.add_argument("--quant_model_path", type=str, default=os.path.join(ROOT_DIR, "trained_models/resnet8_q8.pth"), help="Path to the quantized model")
     args = parser.parse_args()
@@ -132,32 +151,49 @@ def main():
                 return idx
         return -1
 
-    calib_loader, calib_num_batches = get_calibration_loader(model_name="resnet8", calib_samples=1024)
-    train_loader = get_training_loader("resnet8")
+    
     criterion = nn.CrossEntropyLoss()
-    quant_state_dict = torch.load(args.quant_model_path, weights_only=True)
 
-    def instantiate_and_eval(multiplier_files):
+    def instantiate_and_eval(multiplier_files, baseline=False):
         """Instantiate ResNet8, inject the specified .npy files, load the weights and calculate the loss."""
-
+        quant_state_dict = torch.load(args.quant_model_path, weights_only=True)
         setup_seed(42)
-
+        set_data_loaders("resnet8")
         model = resnet8.ResNet8(
-            multiplier_matrix=multiplier_files, 
-            num_classes=10, 
+            multiplier_matrix=multiplier_files,
+            num_classes=10,
             conv_type=3,
-            bit_width=8, 
-            signed=False, 
-            zone=False
+            bit_width=8,
+            signed=False,
+            zone=False,
         ).to(device)
+
         model.load_state_dict(quant_state_dict)
 
-        calibration(model, calib_loader, calib_num_batches)
+        calibration(model)
+
+        if args.pre_training:
+            if baseline:
+                return evaluate_forward_only(model, test_loader, criterion)
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+            #print(f"Pre-training starting. LOSS JUST FOR DEBUG : {evaluate_forward_only(model, train_loader, criterion)}")
+            pre_training(model, train_loader, criterion, optimizer)
+            #print(f"Pre-training completed. LOSS JUST FOR DEBUG : {evaluate_forward_only(model, train_loader, criterion)}")
+            return evaluate_forward_only(model, test_loader, criterion)
+
+        if baseline:
+                    if args.full_test:
+                        return evaluate_forward_only(model, test_loader, criterion)
+                    return evaluate_forward_only(model, train_loader, criterion)
+
+        if args.full_test:
+            return evaluate_forward_only(model, test_loader, criterion)
 
         return evaluate_forward_only(model, train_loader, criterion, num_batches=args.batch_number)
 
     print("Calcolo Loss Baseline (Quantized)...")
-    baseline_loss = instantiate_and_eval(None)
+    #TODO: check if does make sense to use the loss over the entiry dataset
+    baseline_loss = instantiate_and_eval(None, baseline=True)
     print(f"Baseline Loss: {baseline_loss:.6f}")
 
     start_time = time.time()
@@ -206,7 +242,7 @@ def main():
 
     experiment_timestamp = int(time.time())
 
-    experiment_folder_path = os.path.join(CURR_DIR, "sensitivity_matrices", f"resnet8_sensitivity_{experiment_timestamp}")
+    experiment_folder_path = os.path.join(CURR_DIR, "sensitivity_matrices", f"resnet8_sensitivity_n_samples_{'full_test' if args.full_test else str(BATCH_SIZE * args.batch_number if args.batch_number is not None else 1)}_{experiment_timestamp}")
     os.makedirs(experiment_folder_path, exist_ok=True)
 
     experiment_name = f"resnet8_sensitivity_matrix_{experiment_timestamp}"

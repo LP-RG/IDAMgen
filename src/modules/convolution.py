@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from torch import nn
-#import modules.observers as observers
 import modules.functions as functions
 import modules.quantization as quantization
 
@@ -43,13 +42,13 @@ class Conv2d_custom(nn.Conv2d):
                                             dtype=torch.quint8,
                                             qscheme=torch.per_tensor_affine,
                                             quant_min=0,
-                                            quant_max=127,   # 2^6 - 1, per uint6
+                                            quant_max=2**bit_width - 1,
                                         )
         self.weight_observer = observer.MSEObserver(
                                             dtype=torch.quint8,
                                             qscheme=torch.per_tensor_affine,
                                             quant_min=0,
-                                            quant_max=127,   # 2^6 - 1, per uint6
+                                            quant_max=2**bit_width - 1,
                                         )
         self.bit_width = bit_width
         self.multiplier_matrix = multiplier_matrix
