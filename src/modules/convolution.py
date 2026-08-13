@@ -24,7 +24,8 @@ class Conv2d_custom(nn.Conv2d):
                 bit_width,
                 multiplier_matrix,
                 signed = False,
-                name = None):
+                name = None,
+                shift_bits = 0):
         
         super().__init__(channel_in,channel_out,kernel_size,stride,padding,bias = bias)
         self.activation_observer = observers.MovingAverageMinMaxObserver(q_level="L", out_channels=None)
@@ -35,6 +36,7 @@ class Conv2d_custom(nn.Conv2d):
         self.signed = signed
         self.bit_width = bit_width
         self.multiplier_matrix = multiplier_matrix
+        self.shift_bits = shift_bits
 
         self.name = name
         self.conv_type = conv_type
@@ -85,7 +87,6 @@ class Conv2d_custom(nn.Conv2d):
         else:
             input_int = quantization.unsigned_quantization(input, self.activation_scale, self.activation_zp_neg, self.activation_quant_max)
             weight_int = quantization.unsigned_quantization(self.weight, self.weight_scale, self.weight_zp_neg, self.weight_quant_max)
-
         
         return self.conv2d_op.apply(input,
                                     self.weight,
@@ -101,5 +102,6 @@ class Conv2d_custom(nn.Conv2d):
                                     self.signed,
                                     self.bit_width,
                                     self.name,
-                                    self.multiplier_matrix) 
+                                    self.multiplier_matrix,
+                                    self.shift_bits) 
 

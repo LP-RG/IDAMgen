@@ -123,7 +123,7 @@ def test(model):
 
 def new_training_method(model_name: str, multiplier_matrix=None, conv_type: int = 1,
                         bit_width: int = 8, signed: bool = False, zone: bool = False,
-                        exact_accuracy: float = 0, no_retraining: bool = False):
+                        exact_accuracy: float = 0, no_retraining: bool = False, shift_bits = 0):
     """Main pipeline handling full-precision, quantized, and approximate hardware simulation training."""
     input_name = multiplier_matrix.split("/")[-1] if multiplier_matrix is not None else "None"
     print(f"Network training with parameters: model_name={model_name}, conv_type={conv_type}, "
@@ -173,7 +173,7 @@ def new_training_method(model_name: str, multiplier_matrix=None, conv_type: int 
             raise RuntimeError("Please train the exact model first.")
             
         model = build_model(model_name, conv_type=2, bit_width=bit_width, signed=signed,
-                            zone=zone, multiplier_matrix=multiplier_matrix, num_classes=num_classes)
+                            zone=zone, multiplier_matrix=multiplier_matrix, num_classes=num_classes, shift_bits=shift_bits)
         if not quant_exists:
             print("Starting quantized fine-tuning (5 epochs)...")
             model.load_state_dict(torch.load(exact_path, weights_only=True), strict=False)
@@ -264,6 +264,7 @@ if __name__ == "__main__":
     parser.add_argument("--exact_accuracy", type=float, default=0)
     parser.add_argument("--no_retraining", action="store_true", default=False)
     parser.add_argument("--seed",default=42,required=False)
+    parser.add_argument("--shift_bits", type=int, default=0)
     args = parser.parse_args()
 
     model_name = normalize_model_name(args.model_name)
@@ -275,7 +276,7 @@ if __name__ == "__main__":
         setup_seed(args.seed)
         set_data_loaders(model_name)
         acc = new_training_method(model_name, None, args.conv_type, args.bit_width,
-                                  args.signed, args.zone, args.exact_accuracy)
+                                  args.signed, args.zone, args.exact_accuracy, shift_bits=args.shift_bits)
         print(f"Exact model accuracy: {acc}")
         sys.exit(0)
 
@@ -288,7 +289,7 @@ if __name__ == "__main__":
         setup_seed(args.seed)
         set_data_loaders(model_name)
         acc = new_training_method(model_name, p, args.conv_type, args.bit_width,
-                                  args.signed, args.zone, args.exact_accuracy, args.no_retraining)
+                                  args.signed, args.zone, args.exact_accuracy, args.no_retraining,shift_bits= args.shift_bits)
         print(f"FINAL_ACCURACY:{acc}")
         clean_gpu()
         sys.exit(0)
@@ -302,7 +303,7 @@ if __name__ == "__main__":
         setup_seed(args.seed)
         set_data_loaders(model_name)
         acc = new_training_method(model_name, file_path, args.conv_type, args.bit_width,
-                                  args.signed, args.zone, args.exact_accuracy, args.no_retraining)
+                                  args.signed, args.zone, args.exact_accuracy, args.no_retraining, shift_bits=args.shift_bits)
         print(f"FINAL_ACCURACY:{acc}")
         results[f] = acc
         clean_gpu()
