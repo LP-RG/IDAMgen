@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_DIR="tools/multi_layer_approx/sensitivity_matrix_generation/experiments/21x21_CLADO_method"
+BASE_DIR="tools/multi_layer_approx/sensitivity_matrix_generation/experiments/21x21_CLADO_method_quant_acc"
 SCRIPT="tools/multi_layer_approx/sensitivity_matrix_generation/extract_sensitivity.py"
 
 nohup python3 "$SCRIPT" \
@@ -10,4 +10,5 @@ nohup python3 "$SCRIPT" \
   --2_2_approx "$BASE_DIR/2_2" \
   --2_s_approx "$BASE_DIR/2_s" \
   --3_1_approx "$BASE_DIR/3_1" \
-  --3_2_approx "$BASE_DIR/3_2" &
+  --3_2_approx "$BASE_DIR/3_2" \
+  --batch_number 16 &

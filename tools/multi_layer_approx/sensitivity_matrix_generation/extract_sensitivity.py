@@ -1,5 +1,4 @@
 import sys
-
 import torch
 import numpy as np
 import torch.nn as nn
@@ -9,6 +8,8 @@ import argparse
 import glob
 import json
 import mat_mul
+import csv      
+import shutil   
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SRC_DIR = os.path.join(ROOT_DIR, "src")
@@ -106,35 +107,76 @@ def main():
     parser.add_argument("--pre_training", action="store_true", help="If set, train the model with pre_training before evaluating on the test set.")
     parser.add_argument("--batch_number", type=int, default=None, help="Number of batches (fixed batch_size=64) to see before returning the loss. If omitted, iterates over the whole training set.")
     parser.add_argument("--quant_model_path", type=str, default=os.path.join(ROOT_DIR, "trained_models/resnet8_q8.pth"), help="Path to the quantized model")
+    
+    
+    parser.add_argument("--csv_path", type=str, default="results.csv", help="Path to the results CSV file")
     args = parser.parse_args()
     
     if not os.path.exists(args.quant_model_path):
         raise FileNotFoundError(f"Quantized model not found in {args.quant_model_path}. Please run the quantized training first.")
 
+    csv_metrics = {}
+    if os.path.exists(args.csv_path):
+        with open(args.csv_path, mode='r') as f_csv:
+            reader = csv.DictReader(f_csv)
+            for row in reader:
+                csv_metrics[row['file']] = row
+    else:
+        print(f"Warning: CSV file '{args.csv_path}' not found.")
+
     args_dict = vars(args)
-    layer_dirs = [
-        args_dict['1_1_approx'], 
-        args_dict['1_2_approx'], 
-        args_dict['2_1_approx'], 
-        args_dict['2_2_approx'], 
-        args_dict['2_s_approx'], 
-        args_dict['3_1_approx'], 
-        args_dict['3_2_approx']
-    ]
+    
+    layer_flags = ['1_1_approx', '1_2_approx', '2_1_approx', '2_2_approx', '2_s_approx', '3_1_approx', '3_2_approx']
     
     layer_candidates = [] 
     global_index_map = []
     
-    for layer_idx, l_dir in enumerate(layer_dirs):
+    for layer_idx, flag_name in enumerate(layer_flags):
+        l_dir = args_dict[flag_name]
         if l_dir is not None and os.path.exists(l_dir):
+            
+            layer_str = flag_name.replace('_approx', '')
+            layer_num = layer_idx + 1
+            
+            renamed_dir = os.path.join(l_dir, "renamed_multipliers")
+            os.makedirs(renamed_dir, exist_ok=True)
+            
             files = sorted(glob.glob(os.path.join(l_dir, "*.npy")))
-            layer_candidates.append(files)
+            renamed_files_for_layer = []
+            
             for f in files:
-                global_index_map.append({
-                    "layer": layer_idx + 1,
-                    "file": os.path.basename(f),
-                    "path": f
-                })
+                base_name = os.path.basename(f)
+                name_no_ext = os.path.splitext(base_name)[0]
+                
+                if layer_str in name_no_ext:
+                    new_name = base_name
+                else:
+                    new_name = f"{name_no_ext}_{layer_str}.npy"
+
+                new_path = os.path.join(renamed_dir, new_name)
+                shutil.copy(f, new_path)
+                renamed_files_for_layer.append(new_path)
+                
+                entry = {
+                    "layer_idx": layer_num,
+                    "layer": layer_str,
+                    "file": new_name,
+                    "original_file": base_name,
+                    "path_original_file": f
+                }
+                
+                if name_no_ext in csv_metrics:
+                    metrics = csv_metrics[name_no_ext]
+                    for key in ['area', 'power', 'delay', 'pda', 'mean_ae', 'mean_ae_cnn', 'max_ae', 'accuracy']:
+                        if key in metrics:
+                            entry[key] = float(metrics[key])
+                    
+                    if 'power' in entry and 'area' in entry:
+                        entry['pa'] = entry['power'] * entry['area']
+                
+                global_index_map.append(entry)
+            
+            layer_candidates.append(renamed_files_for_layer)
         else:
             layer_candidates.append([])
             
@@ -146,12 +188,12 @@ def main():
     S_matrix = np.zeros((total_candidates, total_candidates))
     
     def get_g_idx(layer_i, file_path):
+        basename = os.path.basename(file_path)
         for idx, item in enumerate(global_index_map):
-            if item["path"] == file_path:
+            if item["file"] == basename and item["layer_idx"] == layer_i + 1:
                 return idx
         return -1
 
-    
     criterion = nn.CrossEntropyLoss()
 
     def instantiate_and_eval(multiplier_files, baseline=False):
@@ -169,7 +211,6 @@ def main():
         ).to(device)
 
         model.load_state_dict(quant_state_dict)
-
         calibration(model)
 
         if args.pre_training:
@@ -182,9 +223,9 @@ def main():
             return evaluate_forward_only(model, test_loader, criterion)
 
         if baseline:
-                    if args.full_test:
-                        return evaluate_forward_only(model, test_loader, criterion)
-                    return evaluate_forward_only(model, train_loader, criterion)
+            if args.full_test:
+                return evaluate_forward_only(model, test_loader, criterion)
+            return evaluate_forward_only(model, train_loader, criterion)
 
         if args.full_test:
             return evaluate_forward_only(model, test_loader, criterion)
@@ -241,12 +282,10 @@ def main():
     os.makedirs(result_folder_path, exist_ok=True)
 
     experiment_timestamp = int(time.time())
-
     experiment_folder_path = os.path.join(CURR_DIR, "sensitivity_matrices", f"resnet8_sensitivity_n_samples_{'full_test' if args.full_test else str(BATCH_SIZE * args.batch_number if args.batch_number is not None else 1)}_{experiment_timestamp}")
     os.makedirs(experiment_folder_path, exist_ok=True)
 
     experiment_name = f"resnet8_sensitivity_matrix_{experiment_timestamp}"
-
     out_matrix_path = os.path.join(experiment_folder_path, f"{experiment_name}.npy")
     out_map_path = os.path.join(experiment_folder_path, f"{experiment_name}_map.json")
     

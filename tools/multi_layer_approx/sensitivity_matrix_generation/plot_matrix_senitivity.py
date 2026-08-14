@@ -179,7 +179,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize pairwise sensibility matrix")
     parser.add_argument("--matrix", type=str, default="sensitivity_matrix_resnet8.npy", help="Path to .npy matrix file")
     parser.add_argument("--map", type=str, default="sensitivity_matrix_map.json", help="Path to .json used for names")
-    parser.add_argument("--cands", type=int, default=4, help="Number of multipliers tested for each layer")
+    parser.add_argument("--cands", type=int, default=3, help="Number of multipliers tested for each layer")
     parser.add_argument("--save_path", type=str, help="directory path to save the output image")
     parser.add_argument("--analyze", action="store_true", help="Analyze best combinations based on the matrix")
     parser.add_argument("--total_loss", action="store_true", help="Use total loss instead of pure interaction for analysis")
