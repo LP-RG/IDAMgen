@@ -147,11 +147,15 @@ def main():
             for f in files:
                 base_name = os.path.basename(f)
                 name_no_ext = os.path.splitext(base_name)[0]
+
+                temp_name_no_ext = name_no_ext
                 
-                if layer_str in name_no_ext:
-                    new_name = base_name
-                else:
-                    new_name = f"{name_no_ext}_{layer_str}.npy"
+                for suffix in ['_1_1', '_1_2', '_2_1', '_2_2', '_2_s', '_3_1', '_3_2']:
+                    if temp_name_no_ext.endswith(suffix):
+                        temp_name_no_ext = temp_name_no_ext[:-len(suffix)]
+                        break
+                
+                new_name = f"{temp_name_no_ext}_{layer_str}.npy"
 
                 new_path = os.path.join(renamed_dir, new_name)
                 shutil.copy(f, new_path)
