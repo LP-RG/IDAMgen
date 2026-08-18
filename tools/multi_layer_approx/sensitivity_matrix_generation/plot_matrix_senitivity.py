@@ -47,32 +47,25 @@ def visualize_sensitivity_matrix(npy_path, json_path, num_candidates=4, save_pat
 
     sorting_info = []
     for i, item in enumerate(index_map):
-        layer = item.get('layer', 0)
-        file_name = item.get('file', '')
+        layer_idx = item.get('layer_idx', 0)
+        mae_val = item.get('mean_ae_cnn', -1.0)
         
-        match = re.search(r"mae_cnn_(\d+)", file_name)
-
-        mae_val = int(match.group(1)) if match else float('inf') 
-        
-        sorting_info.append((i, layer, mae_val))
+        sorting_info.append((i, layer_idx, mae_val))
 
     sorting_info.sort(key=lambda x: (x[1], -x[2]))
     
     new_order = [x[0] for x in sorting_info]
 
     index_map = [index_map[i] for i in new_order]
-    
 
     matrix = matrix[new_order, :] # reorder rows
     matrix = matrix[:, new_order] # reorder columns
 
     labels = []
     for item in index_map:
-        clean_name = item['file'].replace('.npy', '').strip('layer').strip('_')
-        match = re.search(r"^(mul_i16_o16_\d+).*?_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)(?:_[^_]+)?$", clean_name)
-        if match:
-            clean_name = match.group(1) + f"_{match.group(2)}_{match.group(3)}"
-        labels.append(f"L{item['layer']} {clean_name}")
+        layer_str = item.get('layer', str(item.get('layer_idx', '?')))
+        mae_val = item.get('mean_ae_cnn', 0.0)
+        labels.append(f"L{layer_str} (MAE: {mae_val:.2f})")
 
     fig, ax = plt.subplots(figsize=(12, 10))
 
@@ -142,8 +135,8 @@ def analyze_best_combinations(matrix, index_map):
 
     for i in range(num_elementi):
         for j in range(i + 1, num_elementi):
-            layer_i = index_map[i]['layer']
-            layer_j = index_map[j]['layer']
+            layer_i = index_map[i].get('layer_idx', index_map[i].get('layer', 0))
+            layer_j = index_map[j].get('layer_idx', index_map[j].get('layer', 0))
 
             if layer_i != layer_j:
                 s_ii = matrix[i, i]
@@ -153,8 +146,11 @@ def analyze_best_combinations(matrix, index_map):
                 # Formula CLADO: Loss(i) + Loss(j) + 2*Interazione(i,j)
                 loss_totale = s_ii + s_jj + (2 * s_ij)
 
-                nome_i = f"L{layer_i} {index_map[i]['file'].replace('.npy', '')}"
-                nome_j = f"L{layer_j} {index_map[j]['file'].replace('.npy', '')}"
+                layer_str_i = index_map[i].get('layer', str(layer_i))
+                layer_str_j = index_map[j].get('layer', str(layer_j))
+                
+                nome_i = f"L{layer_str_i} {index_map[i]['file'].replace('.npy', '')}"
+                nome_j = f"L{layer_str_j} {index_map[j]['file'].replace('.npy', '')}"
                 nome_config = f"[{nome_i}] + [{nome_j}]"
 
                 risultati.append((loss_totale, nome_config, s_ii, s_jj, s_ij))

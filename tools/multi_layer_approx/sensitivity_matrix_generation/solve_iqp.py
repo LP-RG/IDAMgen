@@ -4,6 +4,7 @@ import numpy as np
 import cvxpy as cp
 import os
 import glob
+import shutil
 
 # Total multiplications for each layer
 LAYER_MULTS = {
@@ -161,7 +162,23 @@ def main():
         print(f"Optimizing metric: {args.metric}")
         print(f"Cost minimization. Loss constraint <= {target_val}")
 
-    solve_iqp(G_matrix, mapping, weighted_costs, args.mode, target_val, solver=args.solver, metric=args.metric)
+    alpha_result = solve_iqp(G_matrix, mapping, weighted_costs, args.mode, target_val, solver=args.solver, metric=args.metric)
+
+    if alpha_result is not None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        exp_folder_name = os.path.basename(os.path.normpath(args.experiment_dir))
+        
+        out_dir = os.path.join(script_dir, "iqp_solutions", f"{exp_folder_name}_threshold_{args.target_perc}")
+        os.makedirs(out_dir, exist_ok=True)
+        
+        selected_indices = np.where(alpha_result > 0.5)[0]
+        for idx in selected_indices:
+            src_file = mapping[idx]['path_original_file']
+            dst_file = os.path.join(out_dir, mapping[idx]['file'])
+            shutil.copy(src_file, dst_file)
+            
+        print(f"\nCopiati {len(selected_indices)} moltiplicatori scelti nella cartella: {out_dir}")
 
 if __name__ == "__main__":
     main()
