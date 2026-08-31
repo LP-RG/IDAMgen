@@ -11,8 +11,8 @@ import modules.data_loaders as data_loader
 from modules.common import (
     trained_models_path, device,
     normalize_model_name, build_model,
-    setup_seed, clean_gpu,
-    train_loader, test_loader, _classes,
+    setup_seed, clean_gpu, Tee,
+    train_loader, test_loader, _classes
 )
 
 
@@ -162,10 +162,16 @@ def new_training_method(model_name: str, multiplier_matrix=None, conv_type: int 
             print(f"Epoch {epoch + 1}\n-------------------------------")
             train_one_epoch(epoch, model, optimizer, criterion)
             scheduler.step()
+            torch.save(
+                model.state_dict(), 
+                os.path.join(
+                    models_dir, 
+                    f"{model_name}_epoch{epoch+1}.pth"
+            ))
         torch.save(model.state_dict(), exact_path)
         return test(model)
 
-    # ---- conv_type 2: Quantized Model (QAT) ----
+    # ---- conv _type 2: Quantized Model (QAT) ----
     if conv_type == 2:
         exact_exists = os.path.exists(exact_path)
         quant_exists = os.path.exists(quant_path)
@@ -187,6 +193,12 @@ def new_training_method(model_name: str, multiplier_matrix=None, conv_type: int 
                 print(f"Epoch {epoch + 1}\n-------------------------------")
                 train_one_epoch(epoch, model, optimizer, criterion)
                 scheduler.step()
+                torch.save(
+                    model.state_dict(), 
+                    os.path.join(
+                        models_dir, 
+                        f"{model_name}_q{bit_width}_epoch{epoch+1}.pth"
+                ))
                 acc = test(model)
                 best_acc = max(best_acc, acc)
             torch.save(model.state_dict(), quant_path)
@@ -225,6 +237,12 @@ def new_training_method(model_name: str, multiplier_matrix=None, conv_type: int 
             print(f"Epoch {epoch + 1}\n-------------------------------")
             train_one_epoch(epoch, model, optimizer, criterion)
             scheduler.step()
+            torch.save(
+                model.state_dict(), 
+                os.path.join(
+                    models_dir, 
+                    f"{model_name}_a{bit_width}_{approx_tag}_epoch{epoch+1}.pth"
+            ))
             acc = test(model)
             # Early stop if accuracy drops drastically below baseline
             if acc < exact_accuracy - 3:
@@ -264,8 +282,13 @@ if __name__ == "__main__":
     parser.add_argument("--exact_accuracy", type=float, default=0)
     parser.add_argument("--no_retraining", action="store_true", default=False)
     parser.add_argument("--seed",default=42,required=False)
+    parser.add_argument("--log_file", type=str, default=None)
     args = parser.parse_args()
-
+    
+    if args.log_file:
+        log_f = open(args.log_file, "w")   # "w" = fresh log each run, not appended
+        sys.stdout = Tee(sys.stdout, log_f)
+    
     model_name = normalize_model_name(args.model_name)
     start = time.time()
     p = args.input_path

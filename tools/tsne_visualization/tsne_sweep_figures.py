@@ -2,6 +2,7 @@ import plotly.graph_objects as go
 import seaborn as sns
 import numpy as np
 import math
+import statistics
 
 # configuration table - handing 2D and 3D in a single block of code
 _DIM_STYLE = {
@@ -92,9 +93,19 @@ def build_kld_sweep_figure(rows, reference_n=3000, width_frac=0.15, offset_frac=
     return fig
 
 
-def build_step_scatter_figure(coords, y, test_mask=None, title=None):
+def build_step_scatter_figure(coords, y, test_mask=None, title=None, y_pred=None, height=700):
+    """Draw one labeled 2D/3D scatter for a single sweep step or training epoch"""
+    
+    if test_mask is not None and y_pred is not None:
+        raise ValueError(
+            "build_step_scatter_figure: test_mask and y_pred cannot both be provided "
+            "(the two aren't currently reconciled with each other in this function)."
+        )
+    
     coords = np.asarray(coords)
     y_all = np.asarray(y)
+    if y_pred is not None:
+        y_pred = np.asarray(y_pred)
     is_2d = coords.shape[1] == 2
 
     unique_labels = np.unique(y_all)
@@ -106,25 +117,33 @@ def build_step_scatter_figure(coords, y, test_mask=None, title=None):
 
     fig = go.Figure()
 
+    if y_pred is not None:
+        correct_mask = (y_all == y_pred)
+        wrong_mask = ~correct_mask
+        misclass = coords[wrong_mask]
+        wrong_indices = np.where(wrong_mask)[0]
+
     if test_mask is not None:
         test_mask = np.asarray(test_mask, dtype=bool)
         train_coords = coords[~test_mask]
         coords = coords[test_mask]
         y_all = y_all[test_mask]
 
+    # train trace
         if len(train_coords) > 0:
             marker = dict(color="#cccccc", size=4, opacity=0.6)
             if is_2d:
                 fig.add_trace(go.Scatter(
                     x=train_coords[:, 0], y=train_coords[:, 1],
-                    mode="markers", name="train", marker=marker
+                    mode="markers", name="Train (NE)", marker=marker
                 ))
             else:
                 fig.add_trace(go.Scatter3d(
                     x=train_coords[:, 0], y=train_coords[:, 1], z=train_coords[:, 2],
-                    mode="markers", name="train", marker=marker
+                    mode="markers", name="Train (NE)", marker=marker
                 ))
 
+    # test trace
     for lab in unique_labels:
         pts = coords[y_all == lab]
         if len(pts) == 0:
@@ -133,13 +152,94 @@ def build_step_scatter_figure(coords, y, test_mask=None, title=None):
         if is_2d:
             fig.add_trace(go.Scatter(
                 x=pts[:, 0], y=pts[:, 1],
-                mode="markers", name=str(lab), marker=marker))
+                mode="markers", name="Test label" + str(lab), marker=marker))
         else:
             fig.add_trace(go.Scatter3d(
                 x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
-                mode="markers", name=str(lab), marker=marker))
+                mode="markers", name="Test label" + str(lab), marker=marker))
 
-    fig.update_layout(title=title, legend_title_text="class",
-                       margin=dict(l=20, r=20, t=40, b=20), height=700)
+    # misclassified trace
+    if y_pred is not None:
+        if is_2d:
+            marker=dict(symbol="x", size=14, color="red", line=dict(width=2, color="red"))
+            fig.add_trace(go.Scatter(
+                x=misclass[:, 0], y=misclass[:, 1],
+                mode="markers",
+                name=f"Misclassified ({len(wrong_indices)})",
+                marker=marker,
+                customdata=wrong_indices,
+                hovertemplate=("x=%{x:.2f}<br>y=%{y:.2f}<br>"
+                    "true=%{text}<br>pred=%{meta}<extra></extra>"),
+                text=y_all[wrong_mask],
+                meta=y_pred[wrong_mask]
+            ))
+        else:
+            marker=dict(symbol="x", size=10, color="red")
+            fig.add_trace(go.Scatter3d(
+                x=misclass[:, 0], y=misclass[:, 1], z=misclass[:, 2],
+                mode="markers", 
+                name=f"Misclassified ({len(wrong_indices)})", 
+                marker=marker,
+                customdata=wrong_indices,
+                hovertemplate=("x=%{x:.2f}<br>y=%{y:.2f}<br>"
+                    "true=%{text}<br>pred=%{meta}<extra></extra>"),
+                text=y_all[wrong_mask],
+                meta=y_pred[wrong_mask]
+            ))
+
+    camera = dict(eye=dict(x=1.5, y=1.5, z=1.2), up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0))
+
+    fig.update_layout(title=title, 
+        legend_title_text="class",
+        margin=dict(l=20, r=20, t=40, b=20), 
+        height=height,
+        # if figure gets re-rendered keep whatever camera state the user last set by hand
+        uirevision="scatter-view",
+    )
+
+    if not is_2d:
+        fig.update_layout(scene=dict(camera=camera, aspectmode="data"))
+    
+    # cluster labels
+    d = 1  # halo thickness in pixels
+    offsets = [(-d, -d), (-d, 0), (-d, d), ( 0, -d), ( 0, d), ( d, -d), ( d, 0), ( d, d)]
+
+    scene_annotations = []
+    for lab in unique_labels:
+        if is_2d:
+            pts = coords[y_all == lab]
+            if len(pts) == 0:
+                continue
+            xt, yt = np.median(pts, axis=0)
+            for ox, oy in offsets:
+                fig.add_annotation(
+                    x=float(xt), y=float(yt), xshift=ox, yshift=oy,
+                    text=str(int(lab)), showarrow=False,
+                    font=dict(size=20, color="white"),
+                )
+            fig.add_annotation(
+                x=float(xt), y=float(yt),
+                text=str(int(lab)), showarrow=False,
+                font=dict(size=16, color="black"),
+            )
+        else:        
+            pts = coords[y_all == lab]
+            if len(pts) == 0:
+                continue
+            xt, yt, zt = np.median(pts, axis=0)
+            for i in range(len(offsets)):
+                scene_annotations.append(dict(
+                    x=float(xt), y=float(yt), z=float(zt),
+                    xshift = offsets[i][0], yshift = offsets[i][1],
+                    text=str(int(lab)),
+                    showarrow=False,
+                    font=dict(size=20, color="white")
+                ))
+            scene_annotations.append(dict(
+                x=float(xt), y=float(yt), z=float(zt),
+                text=str(int(lab)), showarrow=False,
+                font=dict(size=16, color="black")
+            ))
+            fig.update_layout(scene=dict(annotations=scene_annotations))
+
     return fig
-        

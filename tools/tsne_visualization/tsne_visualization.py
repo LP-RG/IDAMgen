@@ -472,6 +472,9 @@ def run_tsne_sweep_cnn_experiment(model, train_loader, test_loader, device, trai
                             save_artifact=True, 
                             run_id=None, run_dir=None, n_repeats=5):
 
+    """Run the full N_total sweep: extract features once, sweep t-SNE over train_schedule,
+    save per-step artifacts, save the sweep manifest, and build the summary curve figure."""
+
     rng = np.random.default_rng(seed)
     N_max = max(train_schedule)
 

@@ -13,7 +13,7 @@ from tools.tsne_visualization.tsne_sweep_figures import build_kld_sweep_figure
 from tools.tsne_visualization.tsne_sweep_figures import build_step_scatter_figure
 from tools.tsne_visualization.tsne_utils import load_sweep_manifest, load_sweep_step_artifact
 
-dash.register_page(__name__, path="/kld-sweep", name="N_tot vs KL_div")
+dash.register_page(__name__, path="/kld-sweep", name=html.Div(["KL", html.Sub(" div "), "Sweep"]))
 
 def _resolve_manifest_path(run_path_str):
     """Resolve user input (run directory or direct manifest path) to sweep_manifest.json"""
@@ -65,7 +65,7 @@ layout = html.Div(
                 html.Div(
                     style={"display": "flex", "flexDirection": "row", "min-width": "600px"},
                     children=[
-                        dcc.Input(id="run-path", type="text", style={"flex": 1, "padding": "8px"}, placeholder="Path to run directory (e.g. plots/pixels/resnet/sweep/run_2026...)"),
+                        dcc.Input(id="run-path", type="text", style={"flex": 1, "padding": "8px"}, placeholder="Path to run directory (e.g. tsne_visualization/plots/pixels/resnet/sweep/run_2026...)"),
                         html.Button("Load Run", id="load-run", n_clicks=0, style={"padding": "8px 16px"}),
                         html.Button("Update", id="update-step", n_clicks=0, style={"padding": "8px 16px"})
                     ]

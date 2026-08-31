@@ -1,6 +1,7 @@
 from dash import dcc, html, page_registry
 
 def build_navbar(pathname="/"):
+    """Build the nav bar's links from the Dash page registry, highlighting whichever page matches `pathname`."""
     links = [
         dcc.Link(
             page["name"],

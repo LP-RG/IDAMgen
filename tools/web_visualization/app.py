@@ -27,6 +27,7 @@ app.layout = html.Div(
     Input("_pages_location", "pathname"),
 )
 def _update_navbar(pathname):
+    """Rebuild the navbar so the current page's link is highlighted."""
     return build_navbar(pathname)
 
 def main():

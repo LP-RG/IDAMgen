@@ -13,10 +13,8 @@ def run_tsne_sweep(train_schedule: list[int],
                    max_iter: int = 1000,
                    n_repeats: int = 5):
 
-    """
-    Nested t-SNE sweep: for each N in train_schedule, take the first N rows of feature_pool, 
-    combine with test_features, fit a fresh TSNE, and record (N, kl_divergence, coords) for that step.
-    """
+    """Nested t-SNE sweep: for each N in train_schedule, take the first N rows of feature_pool, 
+    combine with test_features, fit a fresh TSNE, and record (N, kl_divergence, coords) for that step."""
 
     # derive n_repeats seeds from one starting seed (shared across steps)
     # to maintain reproducible results
@@ -63,6 +61,7 @@ def run_tsne_sweep(train_schedule: list[int],
         median_2d = median(kl_div_2d) if compute_2d else None
         median_3d = median(kl_div_3d) if compute_3d else None
 
+        # find repeat that is jointly closest to median
         if compute_2d and compute_3d:
             best_i = min(
                 range(len(kl_div_2d)),
@@ -70,6 +69,7 @@ def run_tsne_sweep(train_schedule: list[int],
                             + abs(kl_div_3d[i] - median_3d) / median_3d
             )
             X_2d, X_3d = X_2d_repeats[best_i], X_3d_repeats[best_i]
+            
         elif compute_2d:
             best_i = min(range(len(kl_div_2d)), key=lambda i: abs(kl_div_2d[i] - median_2d))
             X_2d, X_3d = X_2d_repeats[best_i], None
@@ -78,23 +78,6 @@ def run_tsne_sweep(train_schedule: list[int],
             X_2d, X_3d = None, X_3d_repeats[best_i]
         else:
             X_2d, X_3d = None, None
-
-        # if compute_2d:
-        #     median_2d = median(kl_div_2d)
-        #     best_i_2d = min(range(len(kl_div_2d)), key=lambda i: abs(kl_div_2d[i] - median_2d))
-        #     X_2d = X_2d_repeats[best_i_2d]
-        # else:
-        #     median_2d = None
-        #     X_2d = None
-        
-        # if compute_3d:
-        #     median_3d = median(kl_div_3d)
-        #     best_i_3d = min(range(len(kl_div_3d)), key=lambda i: abs(kl_div_3d[i] - median_3d))
-        #     X_3d = X_3d_repeats[best_i_3d]
-        # else:
-        #     median_3d = None
-        #     X_3d = None
-
 
         metadata = {"n_train": n_train,
                     "n_total": n_total,

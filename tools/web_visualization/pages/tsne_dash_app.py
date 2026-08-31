@@ -182,14 +182,15 @@ def _build_plot_figure(data):
 
     scene_annotations = []    
     for lab in unique_labels:
+        d = 2  # halo thickness in pixels
+        offsets = [(-d, -d), (-d, 0), (-d, d), ( 0, -d), ( 0, d), ( d, -d), ( d, 0), ( d, d)]
         if has_2d(data):
             pts_2d = X_2d[ref_mask & (y_all == lab)]
             if len(pts_2d) == 0:
                 continue
             xtext, ytext = np.median(pts_2d, axis=0)
             
-            d = 2  # halo thickness in pixels
-            offsets = [(-d, -d), (-d, 0), (-d, d), ( 0, -d), ( 0, d), ( d, -d), ( d, 0), ( d, d)]
+            
             for i in range(len(offsets)):
                 fig_2d.add_annotation(
                     x=float(xtext), y=float(ytext),
@@ -328,7 +329,7 @@ layout = html.Div(
                     style={"display": "flex", "flexDirection": "row", "min-width": "600px"},
                     children=[
                         dcc.Input(id="run-path", type="text", style={"flex": 1, "padding": "8px"},
-                                    placeholder="Path to run directory (e.g. plots/pixels/resnet/run_2026...)"),
+                                    placeholder="Path to run directory (e.g. tsne_visualization/plots/pixels/resnet/run_2026...)"),
                         html.Button("Load Run", id="load-run", n_clicks=0, style={"padding": "8px 16px"}),
                         html.Button("Clear", id="clear-reset", n_clicks=0, style={"padding": "8px 16px"})
                     ]

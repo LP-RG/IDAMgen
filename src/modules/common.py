@@ -87,3 +87,16 @@ def clean_gpu(model=None, optimizer=None, scheduler=None):
     torch.cuda.empty_cache()
     gc.collect()
     torch.cuda.synchronize()
+
+
+class Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()            
