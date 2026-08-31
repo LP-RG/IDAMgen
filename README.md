@@ -60,15 +60,15 @@ python3 tools/tsne_visualization/tsne_runner.py --model_name lenet5
 
 | Document | Description |
 |---|---|
-| [Training](docs/training.md) | Conv-type pipeline, CLI flags, checkpoint naming |
-| [t-SNE Visualization](docs/tsne.md) | Feature embedding, misclassification overlay, CLI & API |
-| [Dash App](docs/dash_app.md) | Interactive t-SNE explorer |
+| [Training](docs/training.md) | Conv-type pipeline, CLI flags, checkpoint naming, training-history extraction |
+| [t-SNE Visualization](docs/tsne.md) | Feature embedding, 2D/3D dimensionality, KL-divergence sweep, CLI & API |
+| [Dash App](docs/dash_app.md) | Multi-page interactive explorer (t-SNE compare, KL sweep, train history) |
 | [Hardware Evaluation Pipeline](docs/orchestrator.md) | SubXPAT → synthesis → CNN accuracy orchestration |
 
 ## Project Layout
 
 ```
-CNN_At/
+IDAAMgen/
 ├── Makefile                        ← venv + dependency setup (make setup / make clean)
 ├── requirements.txt
 ├── src/
@@ -82,10 +82,24 @@ CNN_At/
 │       └── common.py               ← model registry, paths, seeding, GPU cleanup
 ├── tools/
 │   ├── tsne_visualization/
-│   │   ├── tsne_runner.py          ← CLI entry point for t-SNE analysis
+│   │   ├── tsne_runner.py          ← CLI entry point for t-SNE analysis & sweeps
 │   │   ├── tsne_visualization.py, tsne_utils.py
-│   │   └── web_visualization/
-│   │       └── tsne_dash_app.py    ← interactive Dash viewer
+│   │   ├── tsne_sweep.py           ← multi-seed point-count sweep engine
+│   │   ├── tsne_sweep_figures.py   ← Dash-free Plotly figure builders
+│   │   └── plots/                  ← run directories (generated)
+│   ├── train_visualization/        ← training-history pipeline
+│   │   ├── train_epoch_extractor.py ← checkpoints → per-epoch 3D embeddings
+│   │   ├── train_log_parser.py     ← raw training log → structured JSON
+│   │   ├── train_utils.py, train_figures.py
+│   │   └── raw_logs/, epoch_features/, epoch_artifacts/, dashboard_data/   (generated)
+│   ├── web_visualization/          ← multi-page Dash app
+│   │   ├── app.py                  ← entry point; the only Dash(...) instance
+│   │   ├── navbar.py, shared_figures.py
+│   │   ├── assets/                 ← auto-served css / icons
+│   │   └── pages/
+│   │       ├── tsne_dash_app.py    ← /              t-SNE compare
+│   │       ├── kld_dash_app.py     ← /kld-sweep     KL-divergence sweep
+│   │       └── train_dash_app.py   ← /train-history training history
 │   ├── orchestrator/
 │   │   ├── orchestrator.py         ← SubXPAT → synthesis → training pipeline
 │   │   └── npy_generator.py        ← per-circuit synth + simulation + CSV logging

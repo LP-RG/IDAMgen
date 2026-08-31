@@ -2,7 +2,8 @@
 
 The t-SNE tool runs [scikit-learn t-SNE](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.TSNE.html)
 on CNN feature activations (or raw pixels), overlays classification errors, and
-produces both static PNG outputs and an interactive Dash web application.
+produces both static PNG outputs and artifacts for an interactive Dash web
+application. Embeddings can be computed in 2D, 3D, or both.
 
 ---
 
@@ -35,12 +36,14 @@ This runs t-SNE on the **exact** (float) checkpoint with all defaults (see table
 | `--tsne_feature_layer` | str… | `penultimate` | Layer alias(es) or explicit module path(s) (see §2). You can specify multiple layers to process them all simultaneously. |
 | `--tsne_stages` | str… | `exact` | Which checkpoints to visualise: `exact`, `quantized`, `approximate`. |
 | `--tsne_multiplier_path` | str… | `None` | Path(s) to `.npy` lookup table(s); **required** for `approximate` stage. Accepts multiple paths to run several approximate models simultaneously. |
+| `--tsne_components` | `2D`/`3D`/`2D+3D` | `2D` | Which embedding dimensionalities to compute (see §3). |
 | `--bit_width` | int | `8` | Bit width for quantized/approximate checkpoint filenames. |
 | `--show_misclassifications` | flag | `False` | Also save a grid of misclassified test images as a PNG. |
 | `--tsne-no-save-static` | flag | — | Suppress static PNG output. |
 | `--tsne-no-save-dash-artifact` | flag | — | Suppress `.npz` Dash artifact output. |
 | `--train-if-missing` | flag | `False` | Automatically train missing checkpoints before running t-SNE. |
-| `--tsne_components` | str | `2D` | Allowed dimensional reductions are `2D`, `3D`, or the combination of both with `2D+3D`|
+
+Sweep-only flags are documented separately in §5.
 
 ### Multi-stage comparison example
 
@@ -87,7 +90,37 @@ You can pass one or more of these aliases separated by spaces. All requested lay
 
 ---
 
-## 3 — Output Files
+## 3 — Dimensionality (`--tsne_components`)
+
+| Value | Effect |
+|---|---|
+| `2D` (default) | One `TSNE.fit_transform` call; writes `X_2d`. |
+| `3D` | One call; writes `X_3d`. |
+| `2D+3D` | **Two** calls per layer/stage; writes both. |
+
+The 3D fit reuses the 2D fit's `init`, `random_state` and `max_iter`, so the
+two embeddings stay directly comparable, and stage alignment carries over
+unchanged from the 2D pipeline.
+
+**Cost.** Because `--tsne_feature_layer` and `--tsne_stages` both accept
+multiple values, the runner performs one fit per combination:
+
+```
+N_fits = N_LAYERS × N_STAGES × N_COMPONENTS
+```
+
+Selecting `2D+3D` therefore *doubles* an already multiplicative total — five
+layers across three stages goes from 15 fits to 30. Keep the `2D` default for
+layer/stage sweeps and reserve `3D` / `2D+3D` for one-off manual comparisons
+where the rotatable view is worth the extra compute.
+
+**Backward compatibility.** Artifacts written before this feature contain 2D
+coordinates only. `has_2d()` / `has_3d()` guard every read, so old run
+directories still load correctly in the Dash app.
+
+---
+
+## 4 — Output Files
 
 All outputs are written under `tools/tsne_visualization/plots/` — i.e. relative
 to the `tsne_runner.py` script's own directory, **not** the repo root
@@ -98,14 +131,18 @@ into a timestamped directory containing a `metadata.json` file.
 tools/tsne_visualization/plots/
 └── <feature_space>/          # "layer" or "pixels"
     └── <model_name>/
-        └── run_YYYYMMDD_HHMMSS/
-            ├── metadata.json
-            ├── tsne/
-            │   └── tsne_<model>[_layer-<layer>][_<tag>][_classes<ids>].png
-            ├── misclassified/
-            │   └── misclassified_<model>[…].png
-            └── dash_data/
-                └── tsne_<model>[_layer-<layer>][_<tag>][_classes<ids>].npz
+        ├── run_YYYYMMDD_HHMMSS/
+        │   ├── metadata.json
+        │   ├── tsne/
+        │   │   └── tsne_<model>[_layer-<layer>][_<tag>][_classes<ids>].png
+        │   ├── misclassified/
+        │   │   └── misclassified_<model>[…].png
+        │   └── dash_data/
+        │       └── tsne_<model>[_layer-<layer>][_<tag>][_classes<ids>].npz
+        └── sweep/                       # only when --tsne_sweep is used (§5)
+            └── run_YYYYMMDD_HHMMSS/
+                ├── sweep_manifest.json
+                └── <per-step>.npz       # only with --tsne_sweep_save_dash_artifact
 ```
 
 ### Static PNG (`tsne/`)
@@ -115,7 +152,9 @@ A matplotlib scatter plot with:
 - **Red ×** — misclassified test samples.
 - **Class label text** — centred on each cluster.
 - Accuracy annotation in the lower-left corner.
-Supported only with the `2D`, `2D+3D` --tsne_components CLO.
+
+Produced only for the 2D embedding, i.e. with `--tsne_components 2D` or `2D+3D`.
+3D results are viewed in the Dash app.
 
 ### Misclassification grid (`misclassified/`)
 Saved only when `--show_misclassifications` is set. Each cell shows the raw
@@ -123,14 +162,71 @@ image with `true=` / `pred=` labels in red.
 
 ### Dash artifact (`.npz`)
 A compressed NumPy archive consumed by the interactive app (see [Dash App](dash_app.md)).
-Contains all arrays needed to reconstruct the plot and preview misclassified images without re-running t-SNE.
+Contains `X_2d` and/or `X_3d` plus everything needed to reconstruct the plot and
+preview test images without re-running t-SNE.
 
 ### Run Metadata (`metadata.json`)
 Automatically generated on every run. Logs hyper-parameters (seed, max_train, etc.) ensuring that artifacts in the same `run_` directory are completely comparable.
 
 ---
 
-## 4 — Common Workflows
+## 5 — Point-Count Sweep (KL Divergence)
+
+An exploratory mode that measures how t-SNE embedding quality degrades as more
+points are rendered, by tracking t-SNE's own KL-divergence loss across a
+schedule of training-set sizes. Running it in both dimensionalities quantifies
+how much the extra dimension actually buys at each scale.
+
+`--tsne_sweep` replaces the normal fit; the flags below apply only in this mode.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--tsne_sweep` | flag | `False` | Master switch — run the sweep instead of a normal t-SNE fit. |
+| `--tsne_sweep_train_sizes` | int… | — | The `N` values to test. Their count is `n_steps` in the cost formula below. |
+| `--tsne_sweep_test_size` | int | `1000` | Test-set size held **constant** across every step, so KL values stay comparable. |
+| `--tsne_sweep_feature_layer` | str | `penultimate` | Layer whose features to sweep. Accepts the §2 aliases or an explicit module path. |
+| `--tsne_sweep_n_repeats` | int | `5` | Seed repeats per step, feeding the multi-seed KL median. |
+| `--tsne_sweep_save_dash_artifact` | flag | `False` | Save each step's `.npz` coordinates so per-step scatters are inspectable in the dashboard. Off by default — it persists a full coordinate set per step, where the curve itself needs only a scalar. |
+
+**Why repeats.** Even with `init="pca"`, scikit-learn's PCA solver has a random
+component depending on data shape, governed by `random_state`. Since t-SNE's
+optimization landscape is non-convex, a nudged starting point can settle into a
+different minimum — different final coordinates and a different KL divergence
+for identical input. `--tsne_sweep_n_repeats` fits several seeds and keeps the
+repeat closest to the group median, giving a representative run rather than a
+lucky or unlucky outlier. The default of 5 removes ~55 % of seed noise; beyond
+that each additional repeat costs the same fixed increment for progressively
+less benefit.
+
+**Cost.** These factors multiply:
+
+```
+N_fits = n_steps × n_repeats × n_components
+```
+
+Eight training sizes at the default five repeats in both dimensionalities is
+already 80 fits.
+
+### Example
+
+```bash
+python3 tools/tsne_visualization/tsne_runner.py \
+    --model_name lenet5 \
+    --tsne_sweep \
+    --tsne_sweep_train_sizes 1000 2000 3000 5000 7500 10000 \
+    --tsne_sweep_test_size 500 \
+    --tsne_sweep_feature_layer fc1 \
+    --tsne_sweep_n_repeats 5 \
+    --tsne_sweep_save_dash_artifact \
+    --tsne_components 2D+3D
+```
+
+Results are written to `.../<model>/sweep/run_YYYYMMDD_HHMMSS/` and viewed on
+the `/kld-sweep` page of the Dash app.
+
+---
+
+## 6 — Common Workflows
 
 ### A — Quick sanity check (raw pixels, all classes)
 
@@ -171,10 +267,21 @@ python3 tools/tsne_visualization/tsne_runner.py \
     --tsne_feature_layer conv2
 ```
 
-### E — View an existing run in the Dash app
+### E — Rotatable 3D comparison of all three stages
 
 ```bash
-python3 tools/tsne_visualization/web_visualization/tsne_dash_app.py
-# In the browser: paste a run directory path. Relative paths are resolved against the repo root, 
-# so use e.g.: tools/tsne_visualization/plots/layer/resnet/run_20260515_181919
+python3 tools/tsne_visualization/tsne_runner.py \
+    --model_name lenet5 \
+    --tsne_stages exact quantized approximate \
+    --tsne_multiplier_path multipliers/my_table.npy \
+    --tsne_components 2D+3D
+```
+
+### F — View an existing run in the Dash app
+
+```bash
+python3 tools/web_visualization/app.py
+# In the browser (http://localhost:8051), open the "t-SNE Compare" page and paste a
+# run directory path. Relative paths are resolved against the repo root, so use e.g.:
+# tools/tsne_visualization/plots/layer/resnet/run_20260515_181919
 ```
