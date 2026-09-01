@@ -126,7 +126,7 @@ def get_datasets(batch_size, model_name):
     if model == "lenet5":
         train_loader, test_loader, num_classes = get_mnist(batch_size=batch_size)
         return train_loader, test_loader, num_classes
-    if  model == "vgg16" or model == "resnet" or model == "alexnet_cifar10" or model == "resnet8":
+    if  model == "vgg16" or model == "resnet" or model == "alexnet_cifar10" or model == "resnet8" or model == "resnet20":
         train_loader, test_loader, _ , num_classes = get_cifar10(
             batch_size=batch_size, data_root='./data/cifar'
         )

@@ -208,7 +208,7 @@ def new_training_method(model_name: str, multiplier_matrix: str | list[str] = No
 
     num_classes = _classes if _classes else 10
 
-    if model_name.lower() != "resnet8" and isinstance(multiplier_matrix, (list, tuple)):
+    if (model_name.lower() != "resnet8" and model_name.lower() != "resnet") and isinstance(multiplier_matrix, (list, tuple)):
         multiplier_matrix = multiplier_matrix[0] if multiplier_matrix else None
 
     # ---- conv_type 1: Exact (FP32) Model ----
