@@ -53,7 +53,7 @@ with open("gurobi.lic", "r", encoding="utf-8") as file:
 GUROBI_WLS_OPTIONS = {
     "WLSACCESSID": license.get("WLSACCESSID"),
     "WLSSECRET": license.get("WLSSECRET"),
-    "LICENSEID": license.get("LICENSEID"),
+    "LICENSEID": int(license.get("LICENSEID")),
 }
 
 def get_layers_stats(model_cls, **model_kwargs):
@@ -217,7 +217,7 @@ def solve_iqp(G, mapping, weighted_costs, mode, target_val, solver='GUROBI', met
 
     with gp.Env(params=GUROBI_WLS_OPTIONS) as env:
         try:
-            prob.solve(solver=cp.GUROBI, verbose=True, TimeLimit=6000, NonConvex=2, env=env)
+            prob.solve(solver=cp.GUROBI, verbose=True, TimeLimit=14400, NonConvex=2, env=env)
         except Exception as e:
             print(f"Solver error {solver}: {e}. Falling back to default.")
             prob.solve(verbose=True)

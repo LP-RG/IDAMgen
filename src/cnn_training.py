@@ -370,7 +370,7 @@ if __name__ == "__main__":
     if not args.multiple_layers:
         # Scenario 1.1: No input path provided -> run exact pipeline only
         if p is None:
-            setup_seed(args.seed)
+            setup_seed(int(args.seed))
             set_data_loaders(model_name)
             acc = new_training_method(model_name, None, args.conv_type, args.bit_width,
                                     args.signed, args.zone, args.exact_accuracy)
@@ -383,7 +383,7 @@ if __name__ == "__main__":
 
         # Scenario 1.2: Input path is a single multiplier matrix file
         if os.path.isfile(p):
-            setup_seed(args.seed)
+            setup_seed(int(args.seed))
             set_data_loaders(model_name)
             acc = new_training_method(model_name, p, args.conv_type, args.bit_width,
                                     args.signed, args.zone, args.exact_accuracy, args.no_retraining)
@@ -397,7 +397,7 @@ if __name__ == "__main__":
             if not f.endswith(".npy"):
                 continue
             file_path = os.path.join(p, f)
-            setup_seed(args.seed)
+            setup_seed(int(args.seed))
             set_data_loaders(model_name)
             acc = new_training_method(model_name, file_path, args.conv_type, args.bit_width,
                                     args.signed, args.zone, args.exact_accuracy, args.no_retraining)
@@ -417,7 +417,7 @@ if __name__ == "__main__":
                 print(f"Error: The input path '{p}' does not exist or is not a directory.")
                 sys.exit(1)
 
-            setup_seed(42)
+            setup_seed(int(args.seed))
             set_data_loaders(args.model_name)
 
             if not os.path.isdir(p):
@@ -453,7 +453,7 @@ if __name__ == "__main__":
                 print(f"Error: The input path '{p}' does not exist or is not a directory.")
                 sys.exit(1)
 
-            setup_seed(42)
+            setup_seed(int(args.seed))
             set_data_loaders(args.model_name)
 
             if not os.path.isdir(p):
